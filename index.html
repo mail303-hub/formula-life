@@ -529,7 +529,25 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       var hx = Math.cos(p.h), hy = Math.sin(p.h), vn = hx * bx + hy * by;
       if (vn > 0) {
         p.h = Math.atan2(hy - by * vn * 0.9, hx - bx * vn * 0.9); p.v *= (1 - 0.6 * vn);
-        if (vn > 0.15 && g.hitT <= 0) { g.hitT = 0.9; Snd.thud(); }
+        if (vn > 0.15 && g.hitT <= 0) { g.hitT = 0.9; if (vn > 0.45) Snd.crash(clamp(vn + 0.2, 0.4, 1)); else Snd.thud(); }
+      }
+      if (g.scrapeT <= 0 && p.v > 15) { g.scrapeT = 0.12; Snd.scrape(clamp(p.v / 220, 0.25, 1)); }   // sliding along the barrier
+    }
+    // contact with rivals: a bump (sound, slight speed loss, pushed sideways); rivals keep their line
+    var ch = Math.cos(p.h), sh = Math.sin(p.h), hw = g.kart ? 7 : 8.5, hl = g.kart ? 10 : 13, tk = g.tk;
+    for (var ci = 0; ci < g.cars.length; ci++) {
+      var cr = g.cars[ci], cpos = ((cr.s % tk.L) + tk.L) % tk.L, cidx = Math.floor(cpos / tk.ds) % M, ca = tk.ang[cidx], cq = tk.pts[cidx];
+      var dx = cq[0] - Math.sin(ca) * cr.lane - p.x, dy = cq[1] + Math.cos(ca) * cr.lane - p.y;
+      if (Math.abs(dx) > 20 || Math.abs(dy) > 20) continue;
+      var f = dx * ch + dy * sh, r = -dx * sh + dy * ch;
+      if (Math.abs(f) < hl && Math.abs(r) < hw) {
+        var push = (hw - Math.abs(r)) * 0.5 + 0.3, sg = r > 0 ? -1 : 1;
+        p.x += -sh * sg * push; p.y += ch * sg * push;
+        var closing = f > 0 ? p.v - cr.v : cr.v - p.v;
+        if (g.carT <= 0 && closing > 10) {
+          g.carT = 0.9; Snd.crash(clamp(closing / 120, 0.35, 1));
+          if (f > 0) p.v *= 0.86; else p.v = Math.min(g.pvmax, p.v + 6);
+        } else if (g.scrapeT <= 0) { g.scrapeT = 0.12; Snd.scrape(0.5); }
       }
     }
   };
@@ -582,7 +600,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
 
   Game.update = function (dt) {
     var g = Game, t;
-    g.camYaw += wrapA(g.p.h - g.camYaw) * Math.min(1, 9 * dt); g.hitT = Math.max(0, g.hitT - dt);
+    g.camYaw += wrapA(g.p.h - g.camYaw) * Math.min(1, 9 * dt); g.hitT = Math.max(0, g.hitT - dt); g.carT = Math.max(0, (g.carT || 0) - dt); g.scrapeT = Math.max(0, (g.scrapeT || 0) - dt);
     g.goT = Math.max(0, g.goT - dt);
     if (g.state === 'count') {
       var nb = Math.ceil(g.cd); if (nb > 0 && nb !== g.lastBeep) { g.lastBeep = nb; Snd.beep(520, 0.16); }
@@ -884,7 +902,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     e = document.getElementById('hud-spd'); if (e) e.textContent = Math.round(g.p.v * g.kmh) + ' km/h';
     e = document.getElementById('hud-time'); if (e) e.textContent = fmt(g.state === 'done' ? g.finishT : g.t);
     e = document.getElementById('hud-pad'); if (e) { var pd = g.pad(); e.textContent = pd ? 'Gamepad connected' : ''; }
-    e = document.getElementById('hud-off'); if (e) e.textContent = g.hitT > 0 ? 'Barrier!' : g.p.dist > TW / 2 + 3 ? 'Off track' : '';
+    e = document.getElementById('hud-off'); if (e) e.textContent = g.hitT > 0 ? 'Barrier!' : g.carT > 0 ? 'Contact!' : g.p.dist > TW / 2 + 3 ? 'Off track' : '';
   };
 
   Game.start = function (canvas) {
@@ -895,7 +913,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     g.ctx = canvas.getContext('2d'); g.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     function v(n) { return cs.getPropertyValue(n).trim(); }
     g.col = { grass: v('--track'), edge: v('--mute'), road: '#363f3e', text: v('--ink'), me: v('--accent'), ai: ['#5b8fb9', '#8d7bc2', '#c9a43c', '#4faa8a', '#b8607a', '#7a8c97', '#c97f4b', '#6b9d4f', '#9a6f55'] };
-    g.dark = isDark(); g.pal = g.dark ? PAL.dark : PAL.light; g.dpr = dpr; g.hitT = 0;
+    g.dark = isDark(); g.pal = g.dark ? PAL.dark : PAL.light; g.dpr = dpr; g.hitT = 0; g.carT = 0; g.scrapeT = 0;
     g.camYaw = g.p.h;
     g.on = true; g.last = 0; g.botKeys = null; g.paused = false; Snd.paused = false;
     function frame(ts) {
@@ -1003,6 +1021,32 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     sr.connect(f); f.connect(gn); gn.connect(c.destination); sr.start(now); sr.stop(now + 0.4);
     o.type = 'sine'; o.frequency.setValueAtTime(130, now); o.frequency.exponentialRampToValueAtTime(40, now + 0.3); og.gain.setValueAtTime(0.5, now); og.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
     o.connect(og); og.connect(c.destination); o.start(now); o.stop(now + 0.35);
+  };
+  /* Scraping along a barrier or a rival: a short band of rough noise. */
+  Snd.scrape = function (amt) {
+    var c = Snd.ctx; if (!c || Snd.mute || Snd.paused) return;
+    var sr = c.createBufferSource(), f = c.createBiquadFilter(), gn = c.createGain(), now = c.currentTime;
+    sr.buffer = noiseBuf(c); f.type = 'bandpass'; f.frequency.value = 1800 + Math.random() * 2200; f.Q.value = 1.4;
+    gn.gain.setValueAtTime(0.0001, now); gn.gain.exponentialRampToValueAtTime(0.22 * amt, now + 0.02); gn.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    sr.connect(f); f.connect(gn); gn.connect(c.destination); sr.start(now); sr.stop(now + 0.17);
+  };
+  /* Crash: noise crack, low thump and a metallic clang. amt 0..1 */
+  Snd.crash = function (amt) {
+    var c = Snd.ctx; if (!c || Snd.mute || Snd.paused) return;
+    var now = c.currentTime, sr = c.createBufferSource(), f = c.createBiquadFilter(), gn = c.createGain();
+    sr.buffer = noiseBuf(c); f.type = 'highpass'; f.frequency.value = 900;
+    gn.gain.setValueAtTime(0.7 * amt, now); gn.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+    sr.connect(f); f.connect(gn); gn.connect(c.destination); sr.start(now); sr.stop(now + 0.5);
+    var o = c.createOscillator(), og = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(120, now); o.frequency.exponentialRampToValueAtTime(35, now + 0.35);
+    og.gain.setValueAtTime(0.8 * amt, now); og.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+    o.connect(og); og.connect(c.destination); o.start(now); o.stop(now + 0.4);
+    [[523, 0.16], [787, 0.12], [1180, 0.07]].forEach(function (m) {
+      var q = c.createOscillator(), qg = c.createGain();
+      q.type = 'square'; q.frequency.value = m[0] * (0.97 + Math.random() * 0.06);
+      qg.gain.setValueAtTime(m[1] * amt, now); qg.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      q.connect(qg); qg.connect(c.destination); q.start(now); q.stop(now + 0.32);
+    });
   };
   document.addEventListener('visibilitychange', function () {
     if (!Snd.ctx) return;
@@ -1254,7 +1298,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       '<div class="stage" id="stage"><div class="hud mono"><span id="hud-lap">Lap 1/' + LAPS + '</span><span id="hud-pos">P?</span><span id="hud-spd">0 km/h</span><span id="hud-time">0:00.0</span><span id="hud-off" class="bad"></span><span id="hud-pad" class="mute"></span><button class="btn ghost" data-go="fs" id="fsbtn" style="margin-left:auto">Full screen (F)</button><button class="btn ghost" data-go="snd" id="sndbtn">' + (Snd.mute ? 'Sound: Off (M)' : 'Sound: On (M)') + '</button><button class="btn ghost" data-go="pad">Gamepad setup</button></div>' +
       '<div class="canvaswrap"><canvas id="cv"></canvas><div class="driveover" id="driveover" hidden></div></div>' +
       '<div class="rotovl"><p class="big" style="font-size:2rem">Turn your phone sideways</p><p class="mute">The race plays in landscape, full screen.</p><button class="btn ghost" data-go="fs">Exit full screen</button></div><div class="touch"><div class="slider v" data-slider="pedal" aria-label="Gas and brake slider"><span class="lbl a">Gas</span><span class="lbl b">Brake</span><i class="thumb"></i></div><div class="slider h" data-slider="steer" aria-label="Steering slider"><span class="lbl a">&#9664;</span><span class="lbl b">&#9654;</span><i class="thumb"></i></div></div></div>' +
-      '<p class="mute" style="margin-top:10px;font-size:.9rem">Phone: drag the right slider to steer and the left slider up for gas, down for brake (both at once works). Keys: arrows or W A S D. Gamepad: left stick steers, right trigger gas, left trigger brake. Brake before corners, stay on the asphalt. Cars do not collide. Your skills and car set how fast you can go.</p>' +
+      '<p class="mute" style="margin-top:10px;font-size:.9rem">Phone: drag the right slider to steer and the left slider up for gas, down for brake (both at once works). Keys: arrows or W A S D. Gamepad: left stick steers, right trigger gas, left trigger brake. Brake before corners, stay on the asphalt. Touching a rival or a barrier slows you down. Your skills and car set how fast you can go.</p>' +
       '<button class="btn ghost" data-go="driveSkip">Simulate this race instead</button></div>';
   }
 
