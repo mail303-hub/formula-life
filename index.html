@@ -1,4 +1,7 @@
 <title>Formula Life</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -125,18 +128,43 @@ td.dnf { color: var(--bad); }
 canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; border: 1px solid var(--line); border-radius: 4px; background: var(--track); touch-action: none; }
 .driveover { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: color-mix(in srgb, var(--bg) 82%, transparent); border-radius: 4px; }
 .driveover[hidden] { display: none; }
-.touch { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-top: 10px; }
-.touch button { padding: 16px 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 4px; font-weight: 600; touch-action: none; user-select: none; -webkit-user-select: none; }
-.touch button:active { background: var(--hi); border-color: var(--accent); }
+.touch { display: flex; gap: 12px; margin-top: 10px; }
+.touch .tg { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.touch button { min-height: 64px; padding: 10px 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 8px; font-weight: 600; font-size: 1.05rem; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+.touch button.gas { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.touch button.on { background: var(--hi); border-color: var(--accent); color: var(--ink); }
+.touch button.gas.on { background: var(--accent); color: var(--accent-ink); filter: brightness(1.3); }
+.rot { display: none; margin: 0; font-size: .85rem; text-align: center; }
 .stage { --reserve: 70px; }
-.stage.fs { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+.stage.fs { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; overscroll-behavior: none; touch-action: none;
   padding: max(10px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); }
 .stage.fs .hud { width: 100%; margin: 0; align-items: center; }
 .stage.fs .canvaswrap { width: min(100%, calc((100vh - var(--reserve)) * 1.6071)); width: min(100%, calc((100dvh - var(--reserve)) * 1.6071)); }
 .stage.fs .touch { width: 100%; margin: 0; }
-.stage.fs .touch button { padding: 12px 6px; }
 @media (pointer: fine) { .stage.fs .touch { display: none; } .stage.fs { --reserve: 56px; } }
-@media (pointer: coarse) { .stage.fs { --reserve: 130px; } }
+/* Phones and tablets, portrait: big pedals under the picture */
+@media (pointer: coarse) {
+  .stage.fs { --reserve: 170px; }
+  .stage.fs .touch button { min-height: 84px; }
+  .stage.fs .rot { display: block; }
+  .stage.fs .hud { gap: 2px 12px; font-size: .9rem; }
+  .stage.fs .hud .btn.ghost { padding: 4px 8px; font-size: .78rem; }
+  .stage.fs .hud .btn.ghost[data-go=fs] { margin-left: 0 !important; }
+}
+/* Phones and tablets, landscape: steering on the left, pedals on the right, picture in the middle */
+@media (pointer: coarse) and (orientation: landscape) {
+  .stage.fs { --cw: min(calc((100vh - 58px) * 1.6071), calc(100vw - 280px)); --cw: min(calc((100dvh - 58px) * 1.6071), calc(100dvw - 280px)); display: grid; grid-template-columns: minmax(0, 1fr) var(--cw) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); align-items: stretch; justify-items: center; gap: 4px 10px; }
+  .stage.fs .hud { grid-column: 1 / -1; grid-row: 1; gap: 2px 12px; font-size: .85rem; }
+  .stage.fs .hud .btn.ghost { padding: 3px 8px; font-size: .78rem; }
+  .stage.fs .rot { display: none; }
+  .stage.fs .canvaswrap { grid-column: 2; grid-row: 2; align-self: center; width: var(--cw); }
+  .stage.fs .touch { display: contents; }
+  .stage.fs .touch .tg { grid-row: 2; align-self: stretch; width: 100%; max-width: 160px; min-width: 0; padding-bottom: 4px; }
+  .stage.fs .touch .tg:first-child { grid-column: 1; justify-self: start; }
+  .stage.fs .touch .tg:last-child { grid-column: 3; justify-self: end; }
+  .stage.fs .touch button { min-height: 0; height: 100%; max-height: 150px; align-self: end; }
+}
+@media (pointer: coarse) { body { overscroll-behavior: none; -webkit-user-select: none; user-select: none; } input { -webkit-user-select: text; user-select: text; } }
 .padov { position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .padbox { background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 16px; width: min(560px, 100%); max-height: 100%; overflow: auto; }
 .padrow { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
@@ -849,7 +877,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     Snd.start(s.tier, g.wet);
     g.raf = requestAnimationFrame(frame);
   };
-  Game.stop = function () { Snd.stop(); Game.on = false; cancelAnimationFrame(Game.raf); Game.kb = {}; Game.tc = {}; };
+  Game.stop = function () { Snd.stop(); Game.on = false; cancelAnimationFrame(Game.raf); Game.kb = {}; Game.tc = {}; touchPtr = {}; };
 
   /* ---------- sound: everything is synthesised with Web Audio ---------- */
   var ENG = [
@@ -1047,9 +1075,25 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   if (e.key === 'Escape') { var st = document.getElementById('stage'); if (st && st.classList.contains('fs')) { exitFS(st); return; } }
   var k = KEYMAP[e.key]; if (k && Game.on) { Game.kb[k] = true; e.preventDefault(); } });
   document.addEventListener('keyup', function (e) { var k = KEYMAP[e.key]; if (k) Game.kb[k] = false; });
-  document.addEventListener('pointerdown', function (e) { var b = e.target.closest && e.target.closest('[data-key]'); if (b && Game.on) { Game.tc[b.getAttribute('data-key')] = true; e.preventDefault(); } });
-  function clearTouch() { Game.tc = {}; }
-  document.addEventListener('pointerup', clearTouch); document.addEventListener('pointercancel', clearTouch);
+  /* Touch controls: every finger is tracked by its pointer id, so steering and pedals work together and a thumb can slide between buttons. */
+  var touchPtr = {};
+  function touchKeyAt(x, y) { var el = document.elementFromPoint(x, y); var b = el && el.closest && el.closest('[data-key]'); return b ? b.getAttribute('data-key') : null; }
+  function syncTouch() {
+    var tc = {}; for (var id in touchPtr) if (touchPtr[id]) tc[touchPtr[id]] = true; Game.tc = tc;
+    var bs = document.querySelectorAll('.touch [data-key]'); for (var i = 0; i < bs.length; i++) bs[i].classList.toggle('on', !!tc[bs[i].getAttribute('data-key')]);
+  }
+  document.addEventListener('pointerdown', function (e) {
+    var b = e.target.closest && e.target.closest('[data-key]');
+    if (b && Game.on) { touchPtr[e.pointerId] = b.getAttribute('data-key'); syncTouch(); e.preventDefault(); try { b.releasePointerCapture(e.pointerId); } catch (err) {} }
+  });
+  document.addEventListener('pointermove', function (e) {
+    if (touchPtr[e.pointerId] === undefined) return;
+    var k = touchKeyAt(e.clientX, e.clientY); if (k !== touchPtr[e.pointerId]) { touchPtr[e.pointerId] = k; syncTouch(); }
+  });
+  function endTouch(e) { if (touchPtr[e.pointerId] !== undefined) { delete touchPtr[e.pointerId]; syncTouch(); } }
+  function clearTouch() { touchPtr = {}; syncTouch(); }
+  document.addEventListener('pointerup', endTouch); document.addEventListener('pointercancel', endTouch);
+  document.addEventListener('contextmenu', function (e) { if (e.target.closest && e.target.closest('.stage')) e.preventDefault(); });
   window.addEventListener('blur', function () { Game.kb = {}; clearTouch(); });
   window.__fl = { Game: Game, profile: profile, carRear: carRear, kartRear: kartRear, Snd: Snd };
 
@@ -1149,8 +1193,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     return '<div class="card"><div class="weekend"><h2>' + esc(tr.name) + '</h2><span class="chip">' + (s.pending.wet ? 'Wet: less grip' : 'Dry') + '</span><span class="chip">' + LAPS + ' laps</span></div>' +
       '<div class="stage" id="stage"><div class="hud mono"><span id="hud-lap">Lap 1/' + LAPS + '</span><span id="hud-pos">P?</span><span id="hud-spd">0 km/h</span><span id="hud-time">0:00.0</span><span id="hud-off" class="bad"></span><span id="hud-pad" class="mute"></span><button class="btn ghost" data-go="fs" id="fsbtn" style="margin-left:auto">Full screen (F)</button><button class="btn ghost" data-go="snd" id="sndbtn">' + (Snd.mute ? 'Sound: Off (M)' : 'Sound: On (M)') + '</button><button class="btn ghost" data-go="pad">Gamepad setup</button></div>' +
       '<div class="canvaswrap"><canvas id="cv"></canvas><div class="driveover" id="driveover" hidden></div></div>' +
-      '<div class="touch"><button data-key="left" aria-label="Steer left">&#9664;</button><button data-key="right" aria-label="Steer right">&#9654;</button><button data-key="down" aria-label="Brake">Brake</button><button data-key="up" aria-label="Gas">Gas</button></div></div>' +
-      '<p class="mute" style="margin-top:10px;font-size:.9rem">Keys: arrows or W A S D. Gamepad: left stick steers, right trigger gas, left trigger brake. Brake before corners, stay on the asphalt. Cars do not collide. Your skills and car set how fast you can go.</p>' +
+      '<p class="rot mute">Tip: turn your phone sideways for a bigger picture.</p><div class="touch"><div class="tg"><button data-key="left" aria-label="Steer left">&#9664;</button><button data-key="right" aria-label="Steer right">&#9654;</button></div><div class="tg"><button data-key="down" aria-label="Brake">Brake</button><button class="gas" data-key="up" aria-label="Gas">Gas</button></div></div></div>' +
+      '<p class="mute" style="margin-top:10px;font-size:.9rem">Phone: use the on-screen buttons (multi-touch works). Keys: arrows or W A S D. Gamepad: left stick steers, right trigger gas, left trigger brake. Brake before corners, stay on the asphalt. Cars do not collide. Your skills and car set how fast you can go.</p>' +
       '<button class="btn ghost" data-go="driveSkip">Simulate this race instead</button></div>';
   }
 
@@ -1184,7 +1228,14 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       padBtn + '<button class="btn ghost' + (ui.confirmReset ? ' warn' : '') + '" data-go="reset">' + (ui.confirmReset ? 'Confirm: delete career' : 'New career') + '</button>';
     var main = s.phase === 'drive' ? driveView() : s.phase === 'offers' ? offersView() : s.phase === 'prep' ? prepView() : s.phase === 'result' ? resultView() : seasonView();
     app.innerHTML = '<div class="grid"><div class="main">' + main + '</div><div class="side">' + driverCard() + standingsCard() + '</div></div>';
-    if (s.phase === 'drive') Game.start(document.getElementById('cv'));
+    if (s.phase === 'drive') {
+      Game.start(document.getElementById('cv'));
+      var st0 = document.getElementById('stage');
+      if (st0 && window.matchMedia && matchMedia('(pointer: coarse)').matches && !st0.classList.contains('fs')) {
+        toggleFS();
+        try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function () {}); } catch (e) {}
+      }
+    }
   }
 
   /* ---------- events ---------- */

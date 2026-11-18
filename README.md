@@ -6,7 +6,7 @@ A browser game: climb from junior karting to Formula 1.
 - Team offers by reputation, weekend actions (training, rest, sponsors)
 - Simulated races or drive yourself (first-person view, full screen, barriers)
 - Difficulty: easy / medium / hard
-- Sound, keyboard, gamepad (with button mapping) and touch controls
+- Sound, keyboard, gamepad (with button mapping) and on-screen touch controls for phones (multi-touch, landscape layout)
 - Progress is saved in the browser (localStorage)
 
 ## Run
