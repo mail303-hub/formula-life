@@ -2,6 +2,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1050,7 +1052,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
 
   function exitFS(st) {
     st.classList.remove('fs'); document.body.style.overflow = '';
-    if (document.fullscreenElement && document.exitFullscreen) { try { var r = document.exitFullscreen(); if (r && r.catch) r.catch(function () {}); } catch (e) {} }
+    var fe = document.fullscreenElement || document.webkitFullscreenElement, xf = document.exitFullscreen || document.webkitExitFullscreen;
+    if (fe && xf) { try { var r = xf.call(document); if (r && r.catch) r.catch(function () {}); } catch (e) {} }
     var b = document.getElementById('fsbtn'); if (b) b.textContent = 'Full screen (F)';
   }
   function toggleFS() {
@@ -1058,12 +1061,13 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     if (st.classList.contains('fs')) { exitFS(st); return; }
     st.classList.add('fs'); document.body.style.overflow = 'hidden';
     var b = document.getElementById('fsbtn'); if (b) b.textContent = 'Exit full screen (F)';
-    try { var r = st.requestFullscreen && st.requestFullscreen(); if (r && r.catch) r.catch(function () {}); } catch (e) {}
+    try { var rf = st.requestFullscreen || st.webkitRequestFullscreen; var r = rf && rf.call(st, { navigationUI: 'hide' }); if (r && r.catch) r.catch(function () {}); } catch (e) {}
   }
-  document.addEventListener('fullscreenchange', function () {
+  function onFsChange() {
     var st = document.getElementById('stage');
-    if (st && st.classList.contains('fs') && !document.fullscreenElement) exitFS(st);
-  });
+    if (st && st.classList.contains('fs') && !(document.fullscreenElement || document.webkitFullscreenElement)) exitFS(st);
+  }
+  document.addEventListener('fullscreenchange', onFsChange); document.addEventListener('webkitfullscreenchange', onFsChange);
   function toggleSnd() {
     Snd.mute = !Snd.mute; Snd.init(); Snd.level();
     var b = document.getElementById('sndbtn'); if (b) b.textContent = Snd.mute ? 'Sound: Off (M)' : 'Sound: On (M)';
@@ -1193,7 +1197,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     return '<div class="card"><div class="weekend"><h2>' + esc(tr.name) + '</h2><span class="chip">' + (s.pending.wet ? 'Wet: less grip' : 'Dry') + '</span><span class="chip">' + LAPS + ' laps</span></div>' +
       '<div class="stage" id="stage"><div class="hud mono"><span id="hud-lap">Lap 1/' + LAPS + '</span><span id="hud-pos">P?</span><span id="hud-spd">0 km/h</span><span id="hud-time">0:00.0</span><span id="hud-off" class="bad"></span><span id="hud-pad" class="mute"></span><button class="btn ghost" data-go="fs" id="fsbtn" style="margin-left:auto">Full screen (F)</button><button class="btn ghost" data-go="snd" id="sndbtn">' + (Snd.mute ? 'Sound: Off (M)' : 'Sound: On (M)') + '</button><button class="btn ghost" data-go="pad">Gamepad setup</button></div>' +
       '<div class="canvaswrap"><canvas id="cv"></canvas><div class="driveover" id="driveover" hidden></div></div>' +
-      '<p class="rot mute">Tip: turn your phone sideways for a bigger picture.</p><div class="touch"><div class="tg"><button data-key="left" aria-label="Steer left">&#9664;</button><button data-key="right" aria-label="Steer right">&#9654;</button></div><div class="tg"><button data-key="down" aria-label="Brake">Brake</button><button class="gas" data-key="up" aria-label="Gas">Gas</button></div></div></div>' +
+      '<p class="rot mute">Tip: turn your phone sideways for a bigger picture.</p><div class="touch"><div class="tg"><button data-key="down" aria-label="Brake">Brake</button><button class="gas" data-key="up" aria-label="Gas">Gas</button></div><div class="tg"><button data-key="left" aria-label="Steer left">&#9664;</button><button data-key="right" aria-label="Steer right">&#9654;</button></div></div></div>' +
       '<p class="mute" style="margin-top:10px;font-size:.9rem">Phone: use the on-screen buttons (multi-touch works). Keys: arrows or W A S D. Gamepad: left stick steers, right trigger gas, left trigger brake. Brake before corners, stay on the asphalt. Cars do not collide. Your skills and car set how fast you can go.</p>' +
       '<button class="btn ghost" data-go="driveSkip">Simulate this race instead</button></div>';
   }
@@ -1231,9 +1235,12 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     if (s.phase === 'drive') {
       Game.start(document.getElementById('cv'));
       var st0 = document.getElementById('stage');
-      if (st0 && window.matchMedia && matchMedia('(pointer: coarse)').matches && !st0.classList.contains('fs')) {
-        toggleFS();
-        try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function () {}); } catch (e) {}
+      if (st0 && window.matchMedia && matchMedia('(pointer: coarse)').matches) {
+        // Real full screen needs a tap, so touch devices wait for one before the race starts.
+        st0.classList.add('fs'); document.body.style.overflow = 'hidden';
+        Game.paused = true; Snd.paused = true;
+        var ov0 = document.getElementById('driveover');
+        if (ov0) { ov0.hidden = false; ov0.innerHTML = '<p class="big" style="font-size:2.2rem">Ready?</p><p class="mute" style="text-align:center;margin:0 12px">Tap to start in full screen. Pedals on the left, steering on the right.</p><button class="btn" data-go="touchStart">Tap to start</button>'; }
       }
     }
   }
@@ -1258,6 +1265,17 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       if (o && s.rep >= o.req) { s.team = { name: o.name, car: o.car }; s.money += o.bonus; s.drivers[0].team = o.name; setupWeekend(); save(); }
     }
     else if (g === 'race') { if (ui.mode === 'drive') Snd.init(); runWeekend(ui.action, ui.strat); }
+    else if (g === 'touchStart') {
+      var st1 = document.getElementById('stage'), ov1 = document.getElementById('driveover');
+      if (st1) {
+        try { var rf1 = st1.requestFullscreen || st1.webkitRequestFullscreen; var r1 = rf1 && rf1.call(st1, { navigationUI: 'hide' }); if (r1 && r1.catch) r1.catch(function () {}); } catch (e) {}
+        try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function () {}); } catch (e) {}
+        var fb = document.getElementById('fsbtn'); if (fb) fb.textContent = 'Exit full screen (F)';
+      }
+      if (ov1) { ov1.hidden = true; ov1.innerHTML = ''; }
+      Snd.init(); Game.paused = false; Snd.paused = false; Snd.level(); Game.last = 0;
+      return;
+    }
     else if (g === 'fs') { toggleFS(); return; }
     else if (g === 'snd') { toggleSnd(); return; }
     else if (g === 'pad') { PadUI.open(); return; }
