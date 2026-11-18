@@ -144,27 +144,30 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
 .stage.fs .canvaswrap { width: min(100%, calc((100vh - var(--reserve)) * 1.6071)); width: min(100%, calc((100dvh - var(--reserve)) * 1.6071)); }
 .stage.fs .touch { width: 100%; margin: 0; }
 @media (pointer: fine) { .stage.fs .touch { display: none; } .stage.fs { --reserve: 56px; } }
-/* Phones and tablets, portrait: big pedals under the picture */
-@media (pointer: coarse) {
-  .stage.fs { --reserve: 170px; }
-  .stage.fs .touch button { min-height: 84px; }
-  .stage.fs .rot { display: block; }
-  .stage.fs .hud { gap: 2px 12px; font-size: .9rem; }
-  .stage.fs .hud .btn.ghost { padding: 4px 8px; font-size: .78rem; }
-  .stage.fs .hud .btn.ghost[data-go=fs] { margin-left: 0 !important; }
+.rotovl { display: none; }
+/* Phones and tablets, portrait: ask to turn the phone, the race plays in landscape */
+@media (pointer: coarse) and (orientation: portrait) {
+  .stage.fs .rotovl { display: flex; position: absolute; inset: 0; z-index: 20; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; }
+  .stage.fs .hud, .stage.fs .canvaswrap, .stage.fs .touch, .stage.fs .rot { visibility: hidden; }
 }
-/* Phones and tablets, landscape: steering on the left, pedals on the right, picture in the middle */
+/* Phones and tablets, landscape: the picture fills the whole screen, buttons and HUD float on top of it */
 @media (pointer: coarse) and (orientation: landscape) {
-  .stage.fs { --cw: min(calc((100vh - 58px) * 1.6071), calc(100vw - 280px)); --cw: min(calc((100dvh - 58px) * 1.6071), calc(100dvw - 280px)); display: grid; grid-template-columns: minmax(0, 1fr) var(--cw) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); align-items: stretch; justify-items: center; gap: 4px 10px; }
-  .stage.fs .hud { grid-column: 1 / -1; grid-row: 1; gap: 2px 12px; font-size: .85rem; }
-  .stage.fs .hud .btn.ghost { padding: 3px 8px; font-size: .78rem; }
+  .stage.fs { display: block; padding: 0; background: #000; }
   .stage.fs .rot { display: none; }
-  .stage.fs .canvaswrap { grid-column: 2; grid-row: 2; align-self: center; width: var(--cw); }
-  .stage.fs .touch { display: contents; }
-  .stage.fs .touch .tg { grid-row: 2; align-self: stretch; width: 100%; max-width: 160px; min-width: 0; padding-bottom: 4px; }
-  .stage.fs .touch .tg:first-child { grid-column: 1; justify-self: start; }
-  .stage.fs .touch .tg:last-child { grid-column: 3; justify-self: end; }
-  .stage.fs .touch button { min-height: 0; height: 100%; max-height: 150px; align-self: end; }
+  .stage.fs .canvaswrap { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .stage.fs canvas { width: 100%; height: 100%; aspect-ratio: auto; border: 0; border-radius: 0; }
+  .stage.fs .hud { position: absolute; z-index: 5; top: max(6px, env(safe-area-inset-top, 0px)); left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); width: auto; margin: 0; gap: 4px 8px; font-size: .8rem; color: #fff; pointer-events: none; align-items: center; }
+  .stage.fs .hud > span { background: rgba(0,0,0,.4); padding: 2px 8px; border-radius: 6px; }
+  .stage.fs .hud > span:empty { display: none; }
+  .stage.fs .hud .btn.ghost { pointer-events: auto; background: rgba(0,0,0,.4); color: #fff; border-color: rgba(255,255,255,.35); padding: 2px 8px; font-size: .72rem; }
+  .stage.fs .hud .btn.ghost[data-go=fs] { margin-left: auto !important; }
+  .stage.fs .touch { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; width: auto; margin: 0; display: flex; justify-content: space-between; pointer-events: none;
+    padding: 0 max(14px, env(safe-area-inset-right, 0px)) max(14px, env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px)); }
+  .stage.fs .touch .tg { flex: none; width: min(44vw, 290px); gap: 12px; pointer-events: none; }
+  .stage.fs .touch button { pointer-events: auto; min-height: 0; height: min(28vh, 100px); background: rgba(20,24,24,.34); color: #fff; border: 2px solid rgba(255,255,255,.55); border-radius: 14px; }
+  .stage.fs .touch button.on { background: rgba(255,255,255,.45); }
+  .stage.fs .touch button.gas { background: rgba(194,70,15,.62); border-color: rgba(255,255,255,.7); }
+  .stage.fs .touch button.gas.on { background: rgba(255,110,40,.9); filter: none; }
 }
 @media (pointer: coarse) { body { overscroll-behavior: none; -webkit-user-select: none; user-select: none; } input { -webkit-user-select: text; user-select: text; } }
 .padov { position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
@@ -538,6 +541,17 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     return k;
   };
 
+  /* On a phone in full screen the picture is widened to the screen shape (wider view, same height), so it fills the whole display. */
+  Game.fit = function () {
+    var cv = Game.canvas || document.getElementById('cv'); if (!cv || !Game.ctx) return;
+    var st = document.getElementById('stage'), w = 900;
+    if (st && st.classList.contains('fs') && window.matchMedia && matchMedia('(pointer: coarse)').matches && innerWidth > innerHeight) w = clamp(Math.round(CH * innerWidth / innerHeight), 900, 1400);
+    if (w === CW && cv.width === Math.round(CW * Game.dpr)) return;
+    CW = w; cv.width = CW * Game.dpr; cv.height = CH * Game.dpr; Game.ctx.setTransform(Game.dpr, 0, 0, Game.dpr, 0, 0);
+  };
+  window.addEventListener('resize', function () { setTimeout(function () { if (Game.on) Game.fit(); }, 60); });
+  window.addEventListener('orientationchange', function () { setTimeout(function () { if (Game.on) Game.fit(); }, 250); });
+
   Game.finish = function () {
     var g = Game, t2 = g.t, guard = 0;
     g.state = 'done'; g.finishT = g.t; Snd.chime();
@@ -860,6 +874,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   };
 
   Game.start = function (canvas) {
+    CW = 900;
     var g = Game, dpr = Math.min(2, window.devicePixelRatio || 1), cs = getComputedStyle(document.documentElement);
     g.setup(canvas);
     canvas.width = CW * dpr; canvas.height = CH * dpr;
@@ -872,7 +887,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     function frame(ts) {
       if (!g.on) return;
       var dt = Math.min(0.04, g.last ? (ts - g.last) / 1000 : 0.016); g.last = ts;
-      if (!g.paused) { g.update(dt); g.hud(); Snd.update(g, g.keys()); }
+      var blocked = window.matchMedia && matchMedia('(pointer: coarse) and (orientation: portrait)').matches && document.querySelector('.stage.fs');
+      if (!g.paused && !blocked) { g.update(dt); g.hud(); Snd.update(g, g.keys()); }
       g.draw();
       g.raf = requestAnimationFrame(frame);
     }
@@ -1055,12 +1071,14 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     var fe = document.fullscreenElement || document.webkitFullscreenElement, xf = document.exitFullscreen || document.webkitExitFullscreen;
     if (fe && xf) { try { var r = xf.call(document); if (r && r.catch) r.catch(function () {}); } catch (e) {} }
     var b = document.getElementById('fsbtn'); if (b) b.textContent = 'Full screen (F)';
+    if (Game.on) Game.fit();
   }
   function toggleFS() {
     var st = document.getElementById('stage'); if (!st) return;
     if (st.classList.contains('fs')) { exitFS(st); return; }
     st.classList.add('fs'); document.body.style.overflow = 'hidden';
     var b = document.getElementById('fsbtn'); if (b) b.textContent = 'Exit full screen (F)';
+    if (Game.on) Game.fit();
     try { var rf = st.requestFullscreen || st.webkitRequestFullscreen; var r = rf && rf.call(st, { navigationUI: 'hide' }); if (r && r.catch) r.catch(function () {}); } catch (e) {}
   }
   function onFsChange() {
@@ -1197,7 +1215,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     return '<div class="card"><div class="weekend"><h2>' + esc(tr.name) + '</h2><span class="chip">' + (s.pending.wet ? 'Wet: less grip' : 'Dry') + '</span><span class="chip">' + LAPS + ' laps</span></div>' +
       '<div class="stage" id="stage"><div class="hud mono"><span id="hud-lap">Lap 1/' + LAPS + '</span><span id="hud-pos">P?</span><span id="hud-spd">0 km/h</span><span id="hud-time">0:00.0</span><span id="hud-off" class="bad"></span><span id="hud-pad" class="mute"></span><button class="btn ghost" data-go="fs" id="fsbtn" style="margin-left:auto">Full screen (F)</button><button class="btn ghost" data-go="snd" id="sndbtn">' + (Snd.mute ? 'Sound: Off (M)' : 'Sound: On (M)') + '</button><button class="btn ghost" data-go="pad">Gamepad setup</button></div>' +
       '<div class="canvaswrap"><canvas id="cv"></canvas><div class="driveover" id="driveover" hidden></div></div>' +
-      '<p class="rot mute">Tip: turn your phone sideways for a bigger picture.</p><div class="touch"><div class="tg"><button data-key="down" aria-label="Brake">Brake</button><button class="gas" data-key="up" aria-label="Gas">Gas</button></div><div class="tg"><button data-key="left" aria-label="Steer left">&#9664;</button><button data-key="right" aria-label="Steer right">&#9654;</button></div></div></div>' +
+      '<div class="rotovl"><p class="big" style="font-size:2rem">Turn your phone sideways</p><p class="mute">The race plays in landscape, full screen.</p><button class="btn ghost" data-go="fs">Exit full screen</button></div><div class="touch"><div class="tg"><button data-key="down" aria-label="Brake">Brake</button><button class="gas" data-key="up" aria-label="Gas">Gas</button></div><div class="tg"><button data-key="left" aria-label="Steer left">&#9664;</button><button data-key="right" aria-label="Steer right">&#9654;</button></div></div></div>' +
       '<p class="mute" style="margin-top:10px;font-size:.9rem">Phone: use the on-screen buttons (multi-touch works). Keys: arrows or W A S D. Gamepad: left stick steers, right trigger gas, left trigger brake. Brake before corners, stay on the asphalt. Cars do not collide. Your skills and car set how fast you can go.</p>' +
       '<button class="btn ghost" data-go="driveSkip">Simulate this race instead</button></div>';
   }
@@ -1237,7 +1255,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       var st0 = document.getElementById('stage');
       if (st0 && window.matchMedia && matchMedia('(pointer: coarse)').matches) {
         // Real full screen needs a tap, so touch devices wait for one before the race starts.
-        st0.classList.add('fs'); document.body.style.overflow = 'hidden';
+        st0.classList.add('fs'); document.body.style.overflow = 'hidden'; Game.fit();
         Game.paused = true; Snd.paused = true;
         var ov0 = document.getElementById('driveover');
         if (ov0) { ov0.hidden = false; ov0.innerHTML = '<p class="big" style="font-size:2.2rem">Ready?</p><p class="mute" style="text-align:center;margin:0 12px">Tap to start in full screen. Pedals on the left, steering on the right.</p><button class="btn" data-go="touchStart">Tap to start</button>'; }
