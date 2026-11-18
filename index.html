@@ -130,12 +130,20 @@ td.dnf { color: var(--bad); }
 canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; border: 1px solid var(--line); border-radius: 4px; background: var(--track); touch-action: none; }
 .driveover { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: color-mix(in srgb, var(--bg) 82%, transparent); border-radius: 4px; }
 .driveover[hidden] { display: none; }
-.touch { display: flex; gap: 12px; margin-top: 10px; }
-.touch .tg { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.touch button { min-height: 64px; padding: 10px 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 8px; font-weight: 600; font-size: 1.05rem; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
-.touch button.gas { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.touch button.on { background: var(--hi); border-color: var(--accent); color: var(--ink); }
-.touch button.gas.on { background: var(--accent); color: var(--accent-ink); filter: brightness(1.3); }
+.touch { display: flex; gap: 16px; margin-top: 10px; justify-content: space-between; align-items: flex-end; }
+.slider { position: relative; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; cursor: grab; flex: none; }
+.slider.v { width: 78px; height: 190px; }
+.slider.h { width: min(60vw, 300px); height: 78px; }
+.slider .thumb { position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 50%; background: var(--accent); border: 3px solid rgba(255,255,255,.8); pointer-events: none; will-change: transform; }
+.slider .lbl { position: absolute; font-size: .72rem; font-weight: 700; letter-spacing: .06em; color: var(--mute); pointer-events: none; text-transform: uppercase; }
+.slider.v .lbl { left: 0; right: 0; text-align: center; }
+.slider.v .lbl.a { top: 10px; } .slider.v .lbl.b { bottom: 10px; }
+.slider.h .lbl { top: 50%; transform: translateY(-50%); font-size: 1.1rem; }
+.slider.h .lbl.a { left: 16px; } .slider.h .lbl.b { right: 16px; }
+.slider::after { content: ""; position: absolute; background: var(--line); pointer-events: none; }
+.slider.v::after { left: 22%; right: 22%; top: 50%; height: 2px; }
+.slider.h::after { top: 22%; bottom: 22%; left: 50%; width: 2px; }
+.slider.act { border-color: var(--accent); }
 .rot { display: none; margin: 0; font-size: .85rem; text-align: center; }
 .stage { --reserve: 70px; }
 .stage.fs { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; overscroll-behavior: none; touch-action: none;
@@ -161,13 +169,16 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   .stage.fs .hud > span:empty { display: none; }
   .stage.fs .hud .btn.ghost { pointer-events: auto; background: rgba(0,0,0,.4); color: #fff; border-color: rgba(255,255,255,.35); padding: 2px 8px; font-size: .72rem; }
   .stage.fs .hud .btn.ghost[data-go=fs] { margin-left: auto !important; }
-  .stage.fs .touch { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; width: auto; margin: 0; display: flex; justify-content: space-between; pointer-events: none;
-    padding: 0 max(14px, env(safe-area-inset-right, 0px)) max(14px, env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px)); }
-  .stage.fs .touch .tg { flex: none; width: min(44vw, 290px); gap: 12px; pointer-events: none; }
-  .stage.fs .touch button { pointer-events: auto; min-height: 0; height: min(28vh, 100px); background: rgba(20,24,24,.34); color: #fff; border: 2px solid rgba(255,255,255,.55); border-radius: 14px; }
-  .stage.fs .touch button.on { background: rgba(255,255,255,.45); }
-  .stage.fs .touch button.gas { background: rgba(194,70,15,.62); border-color: rgba(255,255,255,.7); }
-  .stage.fs .touch button.gas.on { background: rgba(255,110,40,.9); filter: none; }
+  .stage.fs .touch { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; width: auto; margin: 0; pointer-events: none;
+    padding: 0 max(18px, env(safe-area-inset-right, 0px)) max(14px, env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px)); }
+  .stage.fs .slider { pointer-events: auto; background: rgba(20,24,24,.34); border: 2px solid rgba(255,255,255,.55); }
+  .stage.fs .slider.act { border-color: #fff; background: rgba(20,24,24,.5); }
+  .stage.fs .slider .lbl { color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+  .stage.fs .slider::after { background: rgba(255,255,255,.5); }
+  .stage.fs .slider .thumb { background: rgba(255,110,40,.9); }
+  .stage.fs .slider.v { width: 84px; height: min(66vh, 250px); }
+  .stage.fs .slider.h { width: min(46vw, 340px); height: 84px; }
+}
 }
 @media (pointer: coarse) { body { overscroll-behavior: none; -webkit-user-select: none; user-select: none; } input { -webkit-user-select: text; user-select: text; } }
 .padov { position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
@@ -418,7 +429,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     [[140,200],[300,90],[460,160],[600,90],[780,150],[840,300],[700,360],[780,470],[560,500],[420,400],[280,500],[130,420],[220,320]],
     [[100,300],[160,140],[340,100],[480,200],[640,90],[800,160],[830,330],[720,470],[520,430],[380,500],[190,470]]
   ];
-  var Game = { on: false, raf: 0, kb: {}, tc: {}, botKeys: null };
+  var Game = { on: false, raf: 0, kb: {}, tc: {}, sl: { steer: 0, pedal: 0 }, botKeys: null };
 
   function wrapA(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }
 
@@ -505,7 +516,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     var wear = 1 - 0.15 * (1 - s.stats.tyre / 100) * clamp(p.total / (LAPS * M), 0, 1);
     var aLat = g.paLat * wear * (off ? 0.7 : 1);
     if (k.up && p.v < g.pvmax * (k.upv == null ? 1 : k.upv)) p.v += (g.pvmax / 3.5) * dt;
-    if (k.down) p.v -= 320 * dt;
+    if (k.down) p.v -= 320 * dt * (k.brk == null ? 1 : k.brk);
     p.v -= (30 + p.v * p.v * 0.0004) * dt;
     if (off && p.v > vmax) p.v -= 250 * dt;
     p.v = clamp(p.v, 0, g.pvmax);
@@ -530,7 +541,10 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   Game.keys = function () {
     var g = Game, b = g.botKeys, kb = g.kb, tc = g.tc;
     if (b) return b;
-    var k = { up: kb.up || tc.up, down: kb.down || tc.down, left: kb.left || tc.left, right: kb.right || tc.right, steerA: null, upv: null }, pad = g.pad();
+    var k = { up: kb.up || tc.up, down: kb.down || tc.down, left: kb.left || tc.left, right: kb.right || tc.right, steerA: null, upv: null, brk: null }, pad = g.pad(), sl = g.sl || {};
+    if (sl.steer) k.steerA = sl.steer;
+    if (sl.pedal > 0.06 && !k.up) { k.up = true; k.upv = clamp(sl.pedal / 0.9, 0.05, 1); }
+    if (sl.pedal < -0.06) { k.down = true; k.brk = clamp(-sl.pedal / 0.9, 0.1, 1); }
     if (pad) {
       var pv = padValues(pad), bt = pv.bt;
       if (pv.steer !== 0) k.steerA = pv.steer;
@@ -895,7 +909,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     Snd.start(s.tier, g.wet);
     g.raf = requestAnimationFrame(frame);
   };
-  Game.stop = function () { Snd.stop(); Game.on = false; cancelAnimationFrame(Game.raf); Game.kb = {}; Game.tc = {}; touchPtr = {}; };
+  Game.stop = function () { Snd.stop(); Game.on = false; cancelAnimationFrame(Game.raf); Game.kb = {}; Game.tc = {}; touchPtr = {}; Game.sl.steer = 0; Game.sl.pedal = 0; };
 
   /* ---------- sound: everything is synthesised with Web Audio ---------- */
   var ENG = [
@@ -1113,7 +1127,31 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     var k = touchKeyAt(e.clientX, e.clientY); if (k !== touchPtr[e.pointerId]) { touchPtr[e.pointerId] = k; syncTouch(); }
   });
   function endTouch(e) { if (touchPtr[e.pointerId] !== undefined) { delete touchPtr[e.pointerId]; syncTouch(); } }
-  function clearTouch() { touchPtr = {}; syncTouch(); }
+  /* Sliders: steering (horizontal) and gas/brake (vertical). The thumb follows the finger and springs back to the middle on release. */
+  var sliderPtr = {};
+  function sliderSet(el, vx, vy) {
+    var th = el.querySelector('.thumb'), r = el.getBoundingClientRect();
+    if (th) th.style.transform = 'translate(' + (vx * (r.width / 2 - 36)) + 'px,' + (-vy * (r.height / 2 - 36)) + 'px)';
+  }
+  function sliderMove(el, e) {
+    var r = el.getBoundingClientRect(), kind = el.getAttribute('data-slider');
+    if (kind === 'steer') { var v = clamp((e.clientX - (r.left + r.width / 2)) / (r.width / 2 - 36), -1, 1); if (Math.abs(v) < 0.06) v = 0; Game.sl.steer = v; sliderSet(el, v, 0); }
+    else { var w = clamp(((r.top + r.height / 2) - e.clientY) / (r.height / 2 - 36), -1, 1); if (Math.abs(w) < 0.06) w = 0; Game.sl.pedal = w; sliderSet(el, 0, w); }
+    el.classList.add('act');
+  }
+  function sliderReset(el) {
+    var kind = el.getAttribute('data-slider'); if (kind === 'steer') Game.sl.steer = 0; else Game.sl.pedal = 0;
+    sliderSet(el, 0, 0); el.classList.remove('act');
+  }
+  function resetSliders() { sliderPtr = {}; Game.sl.steer = 0; Game.sl.pedal = 0; var ss = document.querySelectorAll('[data-slider]'); for (var i = 0; i < ss.length; i++) sliderSet(ss[i], 0, 0), ss[i].classList.remove('act'); }
+  document.addEventListener('pointerdown', function (e) {
+    var el = e.target.closest && e.target.closest('[data-slider]');
+    if (el && Game.on) { sliderPtr[e.pointerId] = el; try { el.setPointerCapture(e.pointerId); } catch (err) {} sliderMove(el, e); e.preventDefault(); }
+  });
+  document.addEventListener('pointermove', function (e) { var el = sliderPtr[e.pointerId]; if (el) { sliderMove(el, e); e.preventDefault(); } });
+  function endSlider(e) { var el = sliderPtr[e.pointerId]; if (el) { delete sliderPtr[e.pointerId]; sliderReset(el); } }
+  document.addEventListener('pointerup', endSlider); document.addEventListener('pointercancel', endSlider);
+  function clearTouch() { touchPtr = {}; syncTouch(); resetSliders(); }
   document.addEventListener('pointerup', endTouch); document.addEventListener('pointercancel', endTouch);
   document.addEventListener('contextmenu', function (e) { if (e.target.closest && e.target.closest('.stage')) e.preventDefault(); });
   window.addEventListener('blur', function () { Game.kb = {}; clearTouch(); });
@@ -1215,8 +1253,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     return '<div class="card"><div class="weekend"><h2>' + esc(tr.name) + '</h2><span class="chip">' + (s.pending.wet ? 'Wet: less grip' : 'Dry') + '</span><span class="chip">' + LAPS + ' laps</span></div>' +
       '<div class="stage" id="stage"><div class="hud mono"><span id="hud-lap">Lap 1/' + LAPS + '</span><span id="hud-pos">P?</span><span id="hud-spd">0 km/h</span><span id="hud-time">0:00.0</span><span id="hud-off" class="bad"></span><span id="hud-pad" class="mute"></span><button class="btn ghost" data-go="fs" id="fsbtn" style="margin-left:auto">Full screen (F)</button><button class="btn ghost" data-go="snd" id="sndbtn">' + (Snd.mute ? 'Sound: Off (M)' : 'Sound: On (M)') + '</button><button class="btn ghost" data-go="pad">Gamepad setup</button></div>' +
       '<div class="canvaswrap"><canvas id="cv"></canvas><div class="driveover" id="driveover" hidden></div></div>' +
-      '<div class="rotovl"><p class="big" style="font-size:2rem">Turn your phone sideways</p><p class="mute">The race plays in landscape, full screen.</p><button class="btn ghost" data-go="fs">Exit full screen</button></div><div class="touch"><div class="tg"><button data-key="down" aria-label="Brake">Brake</button><button class="gas" data-key="up" aria-label="Gas">Gas</button></div><div class="tg"><button data-key="left" aria-label="Steer left">&#9664;</button><button data-key="right" aria-label="Steer right">&#9654;</button></div></div></div>' +
-      '<p class="mute" style="margin-top:10px;font-size:.9rem">Phone: use the on-screen buttons (multi-touch works). Keys: arrows or W A S D. Gamepad: left stick steers, right trigger gas, left trigger brake. Brake before corners, stay on the asphalt. Cars do not collide. Your skills and car set how fast you can go.</p>' +
+      '<div class="rotovl"><p class="big" style="font-size:2rem">Turn your phone sideways</p><p class="mute">The race plays in landscape, full screen.</p><button class="btn ghost" data-go="fs">Exit full screen</button></div><div class="touch"><div class="slider v" data-slider="pedal" aria-label="Gas and brake slider"><span class="lbl a">Gas</span><span class="lbl b">Brake</span><i class="thumb"></i></div><div class="slider h" data-slider="steer" aria-label="Steering slider"><span class="lbl a">&#9664;</span><span class="lbl b">&#9654;</span><i class="thumb"></i></div></div></div>' +
+      '<p class="mute" style="margin-top:10px;font-size:.9rem">Phone: drag the right slider to steer and the left slider up for gas, down for brake (both at once works). Keys: arrows or W A S D. Gamepad: left stick steers, right trigger gas, left trigger brake. Brake before corners, stay on the asphalt. Cars do not collide. Your skills and car set how fast you can go.</p>' +
       '<button class="btn ghost" data-go="driveSkip">Simulate this race instead</button></div>';
   }
 
@@ -1258,7 +1296,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
         st0.classList.add('fs'); document.body.style.overflow = 'hidden'; Game.fit();
         Game.paused = true; Snd.paused = true;
         var ov0 = document.getElementById('driveover');
-        if (ov0) { ov0.hidden = false; ov0.innerHTML = '<p class="big" style="font-size:2.2rem">Ready?</p><p class="mute" style="text-align:center;margin:0 12px">Tap to start in full screen. Pedals on the left, steering on the right.</p><button class="btn" data-go="touchStart">Tap to start</button>'; }
+        if (ov0) { ov0.hidden = false; ov0.innerHTML = '<p class="big" style="font-size:2.2rem">Ready?</p><p class="mute" style="text-align:center;margin:0 12px">Tap to start in full screen. Gas and brake slider on the left, steering slider on the right.</p><button class="btn" data-go="touchStart">Tap to start</button>'; }
       }
     }
   }
