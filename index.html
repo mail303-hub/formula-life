@@ -1244,9 +1244,6 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     });
     h += opt('action', 'rest', ui.action === 'rest', 'Rest', 'Recover 30 energy, no cost', false);
     h += opt('action', 'sponsor', ui.action === 'sponsor', 'Sponsor event', 'Earn ' + money(60 * t.mult) + ' and reputation, uses 10 energy', false);
-    h += '</div><div class="label">2. How to race</div><div class="opts">';
-    h += opt('mode', 'drive', ui.mode === 'drive', 'Drive it yourself', 'Three laps on a track. Keyboard or touch buttons. Your skills set the car\'s limits', false);
-    h += opt('mode', 'sim', ui.mode === 'sim', 'Simulate', 'The game plays the race out for you', false);
     h += '</div>';
     if (ui.mode === 'sim') {
       h += '<div class="label">3. Race approach</div><div class="opts">';
@@ -1299,7 +1296,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       '<div class="canvaswrap"><canvas id="cv"></canvas><div class="driveover" id="driveover" hidden></div></div>' +
       '<div class="rotovl"><p class="big" style="font-size:2rem">Turn your phone sideways</p><p class="mute">The race plays in landscape, full screen.</p><button class="btn ghost" data-go="fs">Exit full screen</button></div><div class="touch"><div class="slider v" data-slider="pedal" aria-label="Gas and brake slider"><span class="lbl a">Gas</span><span class="lbl b">Brake</span><i class="thumb"></i></div><div class="slider h" data-slider="steer" aria-label="Steering slider"><span class="lbl a">&#9664;</span><span class="lbl b">&#9654;</span><i class="thumb"></i></div></div></div>' +
       '<p class="mute" style="margin-top:10px;font-size:.9rem">Phone: drag the right slider to steer and the left slider up for gas, down for brake (both at once works). Keys: arrows or W A S D. Gamepad: left stick steers, right trigger gas, left trigger brake. Brake before corners, stay on the asphalt. Touching a rival or a barrier slows you down. Your skills and car set how fast you can go.</p>' +
-      '<button class="btn ghost" data-go="driveSkip">Simulate this race instead</button></div>';
+      '</div>';
   }
 
   function offersView() {
