@@ -8,7 +8,7 @@ A browser game: climb from junior karting to Formula 1.
 - Team offers by reputation, weekend actions (training, rest, sponsors)
 - Drive every race yourself (first-person view, full screen, barriers, rival contact)
 - Sound, keyboard, gamepad (with button mapping) and on-screen touch sliders for phones
-- Online races with friends (accounts, friend requests, private rooms of up to 4 players)
+- Online races with friends: account = username + password (no email), friend requests, private rooms of up to 4 players; guests can join with a 6-character room code, no account
 - Progress is saved in the browser (localStorage)
 
 ## Run
@@ -19,5 +19,5 @@ Open `index.html` in a browser. No build step.
 
 Online play uses a free Supabase project (accounts, friends, rooms, realtime channel).
 `supabase/schema.sql` creates everything; run it once in the Supabase SQL editor, turn off
-"Confirm email" under Authentication, and put the project URL and publishable key into `SB` in `index.html`.
+"Confirm email" and turn on "Allow anonymous sign-ins" under Authentication, and put the project URL and publishable key into `SB` in `index.html`.
 All table access goes through functions; tables are locked by row level security.

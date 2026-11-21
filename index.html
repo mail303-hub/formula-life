@@ -1689,15 +1689,30 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
 
   /* views */
   function mpShell(inner) { return '<div class="card" id="mp"><div class="head"><h2>Play with friends</h2><button class="btn ghost" data-mp="close">Back to career</button></div>' + inner + '</div>'; }
+  function mpEmail(u) { return String(u).toLowerCase() + '@players.formula-life.game'; }   // no real email: the account is the username
+  MP.fv = { user: '', code: '' };   // what was typed in the sign-in forms, kept when the form is redrawn after an error
+  function mpGuest() { return !!(MP.user && MP.user.is_anonymous); }
+  function mpSuggHTML() {
+    if (!MP.sugg || !MP.sugg.length) return '';
+    return '<p class="mute" style="margin:6px 0">Free names: ' + MP.sugg.map(function (n) { return '<button class="btn ghost" data-mp="pick" data-name="' + esc(n) + '">' + esc(n) + '</button>'; }).join(' ') + '</p>';
+  }
   function mpAuthForm() {
-    var up = MP.tab === 'up';
-    return '<p class="mute">Race your friends live. Only people you have added as friends can join your races.</p>' +
-      '<div class="mptabs"><button class="btn ghost' + (up ? '' : ' on') + '" data-mp="tab-in">Sign in</button><button class="btn ghost' + (up ? ' on' : '') + '" data-mp="tab-up">Create account</button></div>' +
-      '<div class="mpform"><div id="mp-autherr" class="bad">' + esc(MP.err) + '</div><div class="good">' + esc(MP.msg) + '</div>' +
-      '<label class="label" for="mp-email">Email</label><input id="mp-email" type="email" autocomplete="email" placeholder="you@example.com">' +
-      (up ? '<label class="label" for="mp-user">Username (what friends see)</label><input id="mp-user" type="text" maxlength="16" autocomplete="username" placeholder="3 to 16 letters or numbers">' : '') +
-      '<label class="label" for="mp-pass">Password</label><input id="mp-pass" type="password" autocomplete="' + (up ? 'new-password' : 'current-password') + '" placeholder="At least 6 characters">' +
-      '<p style="margin-top:12px"><button class="btn" data-mp="' + (up ? 'signup' : 'signin') + '">' + (up ? 'Create account' : 'Sign in') + '</button></p></div>';
+    var t = MP.tab === 'up' ? 'up' : MP.tab === 'code' ? 'code' : 'in';
+    var h = '<p class="mute">Race your friends live. Only people you have added as friends, or who have your room code, can join your races.</p>' +
+      '<div class="mptabs"><button class="btn ghost' + (t === 'in' ? ' on' : '') + '" data-mp="tab-in">Sign in</button><button class="btn ghost' + (t === 'up' ? ' on' : '') + '" data-mp="tab-up">Create account</button><button class="btn ghost' + (t === 'code' ? ' on' : '') + '" data-mp="tab-code">Join with a code</button></div>' +
+      '<div class="mpform"><div id="mp-autherr" class="bad">' + esc(MP.err) + '</div><div class="good">' + esc(MP.msg) + '</div>';
+    if (t === 'code') {
+      h += '<p class="mute">No account needed. Type a name for the race and the room code your friend sent you.</p>' +
+        '<label class="label" for="mp-user">Your name</label><input id="mp-user" type="text" maxlength="16" autocomplete="off" placeholder="3 to 16 letters or numbers" value="' + esc(MP.fv.user) + '">' + mpSuggHTML() +
+        '<label class="label" for="mp-code">Room code</label><input id="mp-code" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="6 letters or numbers" style="text-transform:uppercase" value="' + esc(MP.fv.code) + '">' +
+        '<p style="margin-top:12px"><button class="btn" data-mp="guest">Join the room</button></p></div>';
+      return h;
+    }
+    h += '<label class="label" for="mp-user">Username</label><input id="mp-user" type="text" maxlength="16" autocomplete="username" placeholder="3 to 16 letters or numbers" value="' + esc(MP.fv.user) + '">' + (t === 'up' ? mpSuggHTML() : '') +
+      '<label class="label" for="mp-pass">Password</label><input id="mp-pass" type="password" autocomplete="' + (t === 'up' ? 'new-password' : 'current-password') + '" placeholder="At least 6 characters">' +
+      (t === 'up' ? '<p class="mute">No email needed. Remember your password: it cannot be reset.</p>' : '') +
+      '<p style="margin-top:12px"><button class="btn" data-mp="' + (t === 'up' ? 'signup' : 'signin') + '">' + (t === 'up' ? 'Create account' : 'Sign in') + '</button></p></div>';
+    return h;
   }
   function mpNameForm() {
     return '<p>Choose the username your friends will see.</p><div class="mpform"><div id="mp-autherr" class="bad">' + esc(MP.err) + '</div><input id="mp-user" type="text" maxlength="16" placeholder="3 to 16 letters or numbers">' +
@@ -1708,8 +1723,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     if (MP.loading) return mpShell('<p class="mute">Connecting...</p>');
     if (!MP.user) return mpShell(mpAuthForm());
     if (!MP.name) return mpShell(mpNameForm());
-    return mpShell('<div class="row" style="justify-content:space-between;margin-bottom:10px"><span>Signed in as <b>' + esc(MP.name) + '</b></span><button class="btn ghost" data-mp="signout">Sign out</button></div>' +
-      '<div class="mpadd"><label class="label" for="mp-add">Add a friend by username</label><div class="mpaddrow"><input id="mp-add" type="text" maxlength="16" placeholder="Their username"><button class="btn" data-mp="addfriend">Send request</button></div></div>' +
+    return mpShell('<div class="row" style="justify-content:space-between;margin-bottom:10px"><span>Signed in as <b>' + esc(MP.name) + '</b>' + (mpGuest() ? ' <span class="chip">guest</span>' : '') + '</span><button class="btn ghost" data-mp="signout">' + (mpGuest() ? 'Leave' : 'Sign out') + '</button></div>' +
+      (mpGuest() ? '' : '<div class="mpadd"><label class="label" for="mp-add">Add a friend by username</label><div class="mpaddrow"><input id="mp-add" type="text" maxlength="16" placeholder="Their username"><button class="btn" data-mp="addfriend">Send request</button></div></div>') +
       '<div id="mp-msg"></div><div id="mp-room"></div><div id="mp-lists"></div>');
   }
   function mpRaceView() {
@@ -1730,7 +1745,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
         '<label>Track <select data-mpset="trk">' + TRACKS.map(function (q, i) { return '<option value="' + i + '"' + (r.trk === i ? ' selected' : '') + '>' + esc(q.name) + '</option>'; }).join('') + '</select></label>' +
         '<label>Difficulty <select data-mpset="lvl">' + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (n) { return '<option value="' + n + '"' + (r.lvl === n ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></label>' +
         '<label>Weather <select data-mpset="wet"><option value="0"' + (r.wet ? '' : ' selected') + '>Dry</option><option value="1"' + (r.wet ? ' selected' : '') + '>Wet</option></select></label></div>';
-      h += '<p class="mute">Invite friends from the list below (up to 4 players).</p><p><button class="btn" data-mp="startrace">Start race</button> <button class="btn ghost" data-mp="leave">Close room</button></p>';
+      if (r.code) h += '<p>Room code: <b class="mono" style="font-size:1.4rem;letter-spacing:.15em">' + esc(r.code) + '</b><br><span class="mute">A friend without an account can join with this code (Friends, Join with a code).</span></p>';
+      h += '<p class="mute">Invite friends from the list below (up to 4 players), or give them the code.</p><p><button class="btn" data-mp="startrace">Start race</button> <button class="btn ghost" data-mp="leave">Close room</button></p>';
     } else {
       h += '<p class="mute">' + esc(TIERS[r.tier].name) + ', ' + esc(TRACKS[r.trk % TRACKS.length].name) + ', difficulty ' + r.lvl + ', ' + (r.wet ? 'wet' : 'dry') + '. Waiting for the host to start.</p><p><button class="btn ghost" data-mp="leave">Leave room</button></p>';
     }
@@ -1743,8 +1759,10 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
         h += '<h3>Race invitations</h3>';
         MP.invites.forEach(function (v) { h += '<div class="frow"><span><b>' + esc(v.host_name) + '</b> invites you: ' + esc(TIERS[v.tier].name) + ', difficulty ' + v.lvl + '</span><button class="btn" data-mp="join" data-id="' + esc(v.room) + '">Join</button></div>'; });
       }
-      h += '<p style="margin:14px 0"><button class="btn" data-mp="newroom">Create a race room</button></p>';
+      if (!mpGuest()) h += '<p style="margin:14px 0"><button class="btn" data-mp="newroom">Create a race room</button></p>';
+      h += '<div class="mpadd"><label class="label" for="mp-code">Join a room with a code</label><div class="mpaddrow"><input id="mp-code" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="Room code" style="text-transform:uppercase"><button class="btn" data-mp="joincode">Join</button></div></div>';
     }
+    if (mpGuest()) return h;
     var inc = MP.friends.filter(function (f) { return f.rel === 'incoming'; }), fr = MP.friends.filter(function (f) { return f.rel === 'friend'; }), out = MP.friends.filter(function (f) { return f.rel === 'outgoing'; });
     if (inc.length) {
       h += '<h3>Friend requests</h3>';
@@ -1775,6 +1793,15 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   }
 
   /* actions */
+  function mpNameCheck(u, cb) {   // is the name free? if not, offer free variants
+    var base = u.slice(0, 13), list = [u];
+    [2, 3, 7, 11, 21, 99].forEach(function (n) { list.push(base + n); }); list.push(base + '_x');
+    for (var q = 0; q < 3; q++) list.push(base + Math.floor(Math.random() * 900 + 100));
+    rpc('mp_free_names', { names: list }).then(function (free) {
+      if (free.indexOf(u) >= 0) return cb(true);
+      MP.sugg = free.slice(0, 4); MP.err = 'That name is taken. ' + (MP.sugg.length ? 'Pick a free one below or type another.' : 'Type another.'); cb(false);
+    }, function (e) { MP.err = mpErr(e); cb(false); });
+  }
   function mpVal(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; }
   function mpAfterSignIn(user) {
     MP.user = user; MP.err = '';
@@ -1798,22 +1825,49 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       mpConnect(function (err) { MP.loading = false; if (err) MP.err = err; if (MP.user && MP.name) mpStartTimers(); render(); if (MP.user && MP.name) mpRefresh(); });
     }
     else if (a === 'close') { if (MP.rid) { rpc('mp_leave', { rid: MP.rid }).then(null, function () {}); mpDropRoom(''); } ui.screen = null; render(); }
-    else if (a === 'tab-in' || a === 'tab-up') { MP.tab = a === 'tab-up' ? 'up' : 'in'; MP.err = ''; MP.msg = ''; render(); }
+    else if (a === 'tab-in' || a === 'tab-up' || a === 'tab-code') { MP.tab = a === 'tab-up' ? 'up' : a === 'tab-code' ? 'code' : 'in'; MP.err = ''; MP.msg = ''; MP.sugg = []; MP.fv = { user: MP.fv.user, code: MP.fv.code }; render(); }
+    else if (a === 'pick') { var f0 = document.getElementById('mp-user'); MP.fv.user = b.getAttribute('data-name'); if (f0) { f0.value = MP.fv.user; } MP.sugg = []; MP.err = ''; var ae = document.getElementById('mp-autherr'); if (ae) ae.textContent = ''; b.parentNode.remove(); }
     else if (a === 'signin') {
-      var em = mpVal('mp-email'), pw = document.getElementById('mp-pass').value;
+      var un0 = mpVal('mp-user'), pw = document.getElementById('mp-pass').value; MP.fv.user = un0;
       MP.err = ''; MP.msg = '';
-      MP.sb.auth.signInWithPassword({ email: em, password: pw }).then(function (r) { if (r.error) { MP.err = r.error.message; render(); } else mpAfterSignIn(r.data.user); });
+      if (!/^[A-Za-z0-9_]{3,16}$/.test(un0)) { MP.err = 'Username: 3 to 16 letters, numbers or _'; render(); return; }
+      MP.sb.auth.signInWithPassword({ email: mpEmail(un0), password: pw }).then(function (r) { if (r.error) { MP.err = /invalid login/i.test(r.error.message) ? 'Wrong username or password.' : r.error.message; render(); } else mpAfterSignIn(r.data.user); });
     }
     else if (a === 'signup') {
-      var em2 = mpVal('mp-email'), pw2 = document.getElementById('mp-pass').value, un = mpVal('mp-user');
-      MP.err = ''; MP.msg = '';
+      var pw2 = document.getElementById('mp-pass').value, un = mpVal('mp-user'); MP.fv.user = un;
+      MP.err = ''; MP.msg = ''; MP.sugg = [];
       if (!/^[A-Za-z0-9_]{3,16}$/.test(un)) { MP.err = 'Username: 3 to 16 letters, numbers or _'; render(); return; }
-      MP.pendingName = un;
-      MP.sb.auth.signUp({ email: em2, password: pw2 }).then(function (r) {
-        if (r.error) { MP.err = r.error.message; render(); }
-        else if (r.data.session) mpAfterSignIn(r.data.user);
-        else { MP.msg = 'Check your email to confirm the account, then sign in.'; MP.tab = 'in'; render(); }
+      if (pw2.length < 6) { MP.err = 'The password needs at least 6 characters.'; render(); return; }
+      mpNameCheck(un, function (ok) {
+        if (!ok) return render();
+        MP.pendingName = un;
+        MP.sb.auth.signUp({ email: mpEmail(un), password: pw2 }).then(function (r) {
+          if (r.error) { MP.err = /already registered/i.test(r.error.message) ? 'That username is taken.' : r.error.message; render(); }
+          else if (r.data.session) mpAfterSignIn(r.data.user);
+          else { MP.err = 'The account needs email confirmation, which is switched on by mistake in the online settings.'; render(); }
+        });
       });
+    }
+    else if (a === 'guest') {
+      var gn = mpVal('mp-user'), gc = mpVal('mp-code').toUpperCase(); MP.fv.user = gn; MP.fv.code = gc;
+      MP.err = ''; MP.msg = ''; MP.sugg = [];
+      if (!/^[A-Za-z0-9_]{3,16}$/.test(gn)) { MP.err = 'Name: 3 to 16 letters, numbers or _'; render(); return; }
+      if (!/^[A-Z0-9]{6}$/.test(gc)) { MP.err = 'The room code has 6 letters or numbers.'; render(); return; }
+      mpNameCheck(gn, function (ok) {
+        if (!ok) return render();
+        MP.sb.auth.signInAnonymously().then(function (r) {
+          if (r.error) throw r.error;
+          MP.user = r.data.user; try { localStorage.setItem(MPK, '1'); } catch (er) {}
+          return rpc('mp_set_username', { u: gn });
+        }).then(function () { MP.name = gn; return rpc('mp_join_code', { c: gc }); })
+          .then(function (rid) { MP.rid = rid; mpSubscribe(rid); mpStartTimers(); render(); return mpRefresh(); })
+          .catch(function (er) { MP.err = /anonymous/i.test(mpErr(er)) ? 'Guest play is not switched on yet.' : mpErr(er); render(); });
+      });
+    }
+    else if (a === 'joincode') {
+      var jc = mpVal('mp-code').toUpperCase();
+      if (!/^[A-Z0-9]{6}$/.test(jc)) { MP.err = 'The room code has 6 letters or numbers.'; MP.msg = ''; mpDraw(false); return; }
+      mpAct(rpc('mp_join_code', { c: jc }), '').then(function (rid) { if (rid) { MP.rid = rid; mpSubscribe(rid); return mpRefresh(); } });
     }
     else if (a === 'setname') {
       var un2 = mpVal('mp-user'); MP.err = '';
