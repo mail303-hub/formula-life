@@ -230,10 +230,17 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     medium: { label: 'Medium', r: 0,  f: 0.82, desc: 'Balanced rivals' },
     hard:   { label: 'Hard',   r: 3,  f: 0.87, desc: 'Fast, tough rivals' }
   };
+  /* Corner sharpness: more smoothing passes give wider, gentler bends (the track length stays the same). Order shown: gentlest first. */
+  var CORNERS = {
+    gentle: { label: 'Gentle', it: 3500, desc: 'Long, sweeping bends' },
+    medium: { label: 'Medium', it: 1200, desc: 'Wider bends' },
+    sharp:  { label: 'Sharp',  it: 400,  desc: 'Tight bends' }
+  };
+  function corners() { return CORNERS[s && s.corners] || CORNERS[ui.corners] || CORNERS.medium; }
   var STATS = [['pace', 'Pace'], ['cons', 'Consistency'], ['wet', 'Wet driving'], ['tyre', 'Tyre care']];
 
   var s = null;                 // game state (saved)
-  var ui = { action: 'pace', strat: 'balanced', mode: 'drive', diff: 'medium', confirmReset: false, name: '' };
+  var ui = { action: 'pace', strat: 'balanced', mode: 'drive', diff: 'medium', corners: 'medium', confirmReset: false, name: '' };
 
   /* ---------- helpers ---------- */
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -268,7 +275,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   /* ---------- game setup ---------- */
   function newCareer(name) {
     s = {
-      name: name || 'You', diff: ui.diff || 'medium', tier: 0, season: 1, money: 300, rep: 10, energy: 100,
+      name: name || 'You', diff: ui.diff || 'medium', corners: ui.corners || 'medium', tier: 0, season: 1, money: 300, rep: 10, energy: 100,
       stats: { pace: 45, cons: 45, wet: 40, tyre: 40 }, phase: 'prep'
     };
     startSeason(false);
@@ -433,7 +440,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
 
   function wrapA(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }
 
-  function buildTrack(shape) {
+  function buildTrack(shape, soft) {
     var P = SHAPES[shape % SHAPES.length], n = P.length, pts = [], i, k;
     function cr(p0, p1, p2, p3, t) {
       var t2 = t * t, t3 = t2 * t;
@@ -448,9 +455,25 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       var f = (d - cum[j]) / (cum[j + 1] - cum[j]), p = pts[j], q = pts[(j + 1) % len];
       out.push([p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f]);
     }
-    for (var it = 0; it < 400; it++) {   // smooth tight corners so the walls never cross
-      var sm = out.map(function (q, n) { var a = out[(n + M - 1) % M], c = out[(n + 1) % M]; return [0.25 * a[0] + 0.5 * q[0] + 0.25 * c[0], 0.25 * a[1] + 0.5 * q[1] + 0.25 * c[1]]; });
-      out = sm;
+    function smoothN(arr, count) {   // in-place [1 2 1] smoothing, closed loop
+      var xs = new Float64Array(M), ys = new Float64Array(M), nx = new Float64Array(M), ny = new Float64Array(M), z, e;
+      for (z = 0; z < M; z++) { xs[z] = arr[z][0]; ys[z] = arr[z][1]; }
+      for (var q = 0; q < count; q++) {
+        for (z = 0; z < M; z++) { var za = z ? z - 1 : M - 1, zc = z === M - 1 ? 0 : z + 1; nx[z] = 0.25 * xs[za] + 0.5 * xs[z] + 0.25 * xs[zc]; ny[z] = 0.25 * ys[za] + 0.5 * ys[z] + 0.25 * ys[zc]; }
+        e = xs; xs = nx; nx = e; e = ys; ys = ny; ny = e;
+      }
+      for (z = 0; z < M; z++) arr[z] = [xs[z], ys[z]];
+      return arr;
+    }
+    function perim(arr) { var s0 = 0, z; for (z = 0; z < M; z++) { var u0 = arr[z], u1 = arr[(z + 1) % M]; s0 += Math.hypot(u1[0] - u0[0], u1[1] - u0[1]); } return s0; }
+    out = smoothN(out, 400);   // smooth tight corners so the walls never cross
+    var extra = Math.max(0, ((soft && soft.it) || 400) - 400);
+    if (extra) {   // gentler bends: keep smoothing, then scale back so the lap length stays the same
+      var L400 = perim(out), cx = 0, cy = 0, z2;
+      out = smoothN(out, extra);
+      for (z2 = 0; z2 < M; z2++) { cx += out[z2][0]; cy += out[z2][1]; } cx /= M; cy /= M;
+      var sc = L400 / perim(out);
+      out = out.map(function (q) { return [cx + (q[0] - cx) * sc, cy + (q[1] - cy) * sc]; });
     }
     L = 0; for (i = 0; i < M; i++) { var w0 = out[i], w1 = out[(i + 1) % M]; L += Math.hypot(w1[0] - w0[0], w1[1] - w0[1]); }
     var ds = L / M, ang = [], kap = [];
@@ -475,7 +498,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   Game.setup = function (canvas) {
     var g = Game, tr = s.calendar[s.race], wet = s.pending.wet, shape = 0;
     TRACKS.forEach(function (t, i) { if (t.name === tr.name) shape = i; });
-    g.tk = buildTrack(shape); g.wet = wet; g.kart = tier().kart; g.kmh = tier().kmh; CAMH = g.kart ? 6.5 : 9; g.lastBeep = 0; g.goT = 0; g.t = 0; g.cd = 3.0; g.state = 'count'; g.order = null; g.canvas = canvas;
+    g.tk = buildTrack(shape, corners()); g.wet = wet; g.kart = tier().kart; g.kmh = tier().kmh; CAMH = g.kart ? 6.5 : 9; g.lastBeep = 0; g.goT = 0; g.t = 0; g.cd = 3.0; g.state = 'count'; g.order = null; g.canvas = canvas;
     var pr = playerBase(wet), pp = carParams(pr, wet);
     g.pvmax = pp.vmax; g.paLat = pp.aLat;
     var rated = s.drivers.map(function (d) { return { d: d, r: d.me ? pr + gauss() * 4 : d.rating + diff().r + (wet ? d.wetSkill : 0) + gauss() * 4 }; })
@@ -1199,7 +1222,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   document.addEventListener('pointerup', endTouch); document.addEventListener('pointercancel', endTouch);
   document.addEventListener('contextmenu', function (e) { if (e.target.closest && e.target.closest('.stage')) e.preventDefault(); });
   window.addEventListener('blur', function () { Game.kb = {}; clearTouch(); });
-  window.__fl = { Game: Game, profile: profile, carRear: carRear, kartRear: kartRear, Snd: Snd };
+  window.__fl = { buildTrack: buildTrack, CORNERS: CORNERS, Game: Game, profile: profile, carRear: carRear, kartRear: kartRear, Snd: Snd };
 
   /* ---------- rendering ---------- */
   function statBar(label, v, cls) {
@@ -1238,6 +1261,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     h += '<span class="chip">Rain chance ' + s.rain + '%</span><span class="chip">Entry fee ' + money(20 * t.mult) + '</span></div>';
     h += '<div class="label">Opponents</div><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">';
     Object.keys(DIFF).forEach(function (k) { h += opt('diff', k, (s.diff || 'medium') === k, DIFF[k].label, DIFF[k].desc, false); });
+    h += '</div><div class="label">Corners</div><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">';
+    Object.keys(CORNERS).forEach(function (k) { h += opt('corners', k, (s.corners || 'medium') === k, CORNERS[k].label, CORNERS[k].desc, false); });
     h += '</div><div class="label">1. Weekend activity</div><div class="opts">';
     STATS.forEach(function (k) {
       h += opt('action', k[0], ui.action === k[0], 'Train ' + k[1].toLowerCase(), k[1] + ' ' + Math.round(s.stats[k[0]]) + ', +2 to +4 for ' + money(trainCost()) + ', uses 15 energy', !can);
@@ -1315,6 +1340,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     return '<div class="card start"><h2 style="margin-bottom:10px">Start your career</h2><p>You begin in junior karting with a small budget. Win races, build your reputation and climb through senior karting, then Formula 4, 3 and 2 to Formula 1.</p>' +
       '<p class="label" style="margin-top:16px">Driver name</p><p><input id="name" type="text" maxlength="20" placeholder="Your name" value="' + esc(ui.name) + '"></p>' +
       '<p class="label">Opponents</p><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">' + Object.keys(DIFF).map(function (k) { return opt('diff', k, ui.diff === k, DIFF[k].label, DIFF[k].desc, false); }).join('') + '</div>' +
+      '<p class="label">Corners</p><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">' + Object.keys(CORNERS).map(function (k) { return opt('corners', k, ui.corners === k, CORNERS[k].label, CORNERS[k].desc, false); }).join('') + '</div>' +
       '<button class="btn" data-go="start">Start career</button></div>';
   }
 
@@ -1346,7 +1372,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   document.addEventListener('change', function (e) {
     var el = e.target;
     if (el.name === 'action') { ui.action = el.value; render(); var n = document.getElementById('action-' + el.value); if (n) n.focus(); }
-    if (el.name === 'diff') { ui.diff = el.value; if (s) { s.diff = el.value; save(); } render(); var dd = document.getElementById('diff-' + el.value); if (dd) dd.focus(); }
+    if (el.name === 'corners') { ui.corners = el.value; if (s) { s.corners = el.value; save(); } render(); var cc = document.getElementById('corners-' + el.value); if (cc) cc.focus(); }
+    else if (el.name === 'diff') { ui.diff = el.value; if (s) { s.diff = el.value; save(); } render(); var dd = document.getElementById('diff-' + el.value); if (dd) dd.focus(); }
     if (el.name === 'mode') { ui.mode = el.value; render(); var q = document.getElementById('mode-' + el.value); if (q) q.focus(); }
     if (el.name === 'strat') { ui.strat = el.value; render(); var m = document.getElementById('strat-' + el.value); if (m) m.focus(); }
   });
