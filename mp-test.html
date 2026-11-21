@@ -1690,6 +1690,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   /* views */
   function mpShell(inner) { return '<div class="card" id="mp"><div class="head"><h2>Play with friends</h2><button class="btn ghost" data-mp="close">Back to career</button></div>' + inner + '</div>'; }
   function mpEmail(u) { return String(u).toLowerCase() + '@players.formula-life.game'; }   // no real email: the account is the username
+  MP.fv = { user: '', code: '' };   // what was typed in the sign-in forms, kept when the form is redrawn after an error
   function mpGuest() { return !!(MP.user && MP.user.is_anonymous); }
   function mpSuggHTML() {
     if (!MP.sugg || !MP.sugg.length) return '';
@@ -1702,12 +1703,12 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       '<div class="mpform"><div id="mp-autherr" class="bad">' + esc(MP.err) + '</div><div class="good">' + esc(MP.msg) + '</div>';
     if (t === 'code') {
       h += '<p class="mute">No account needed. Type a name for the race and the room code your friend sent you.</p>' +
-        '<label class="label" for="mp-user">Your name</label><input id="mp-user" type="text" maxlength="16" autocomplete="off" placeholder="3 to 16 letters or numbers">' + mpSuggHTML() +
-        '<label class="label" for="mp-code">Room code</label><input id="mp-code" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="6 letters or numbers" style="text-transform:uppercase">' +
+        '<label class="label" for="mp-user">Your name</label><input id="mp-user" type="text" maxlength="16" autocomplete="off" placeholder="3 to 16 letters or numbers" value="' + esc(MP.fv.user) + '">' + mpSuggHTML() +
+        '<label class="label" for="mp-code">Room code</label><input id="mp-code" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="6 letters or numbers" style="text-transform:uppercase" value="' + esc(MP.fv.code) + '">' +
         '<p style="margin-top:12px"><button class="btn" data-mp="guest">Join the room</button></p></div>';
       return h;
     }
-    h += '<label class="label" for="mp-user">Username</label><input id="mp-user" type="text" maxlength="16" autocomplete="username" placeholder="3 to 16 letters or numbers">' + (t === 'up' ? mpSuggHTML() : '') +
+    h += '<label class="label" for="mp-user">Username</label><input id="mp-user" type="text" maxlength="16" autocomplete="username" placeholder="3 to 16 letters or numbers" value="' + esc(MP.fv.user) + '">' + (t === 'up' ? mpSuggHTML() : '') +
       '<label class="label" for="mp-pass">Password</label><input id="mp-pass" type="password" autocomplete="' + (t === 'up' ? 'new-password' : 'current-password') + '" placeholder="At least 6 characters">' +
       (t === 'up' ? '<p class="mute">No email needed. Remember your password: it cannot be reset.</p>' : '') +
       '<p style="margin-top:12px"><button class="btn" data-mp="' + (t === 'up' ? 'signup' : 'signin') + '">' + (t === 'up' ? 'Create account' : 'Sign in') + '</button></p></div>';
@@ -1824,16 +1825,16 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       mpConnect(function (err) { MP.loading = false; if (err) MP.err = err; if (MP.user && MP.name) mpStartTimers(); render(); if (MP.user && MP.name) mpRefresh(); });
     }
     else if (a === 'close') { if (MP.rid) { rpc('mp_leave', { rid: MP.rid }).then(null, function () {}); mpDropRoom(''); } ui.screen = null; render(); }
-    else if (a === 'tab-in' || a === 'tab-up' || a === 'tab-code') { MP.tab = a === 'tab-up' ? 'up' : a === 'tab-code' ? 'code' : 'in'; MP.err = ''; MP.msg = ''; MP.sugg = []; render(); }
-    else if (a === 'pick') { var f0 = document.getElementById('mp-user'); if (f0) { f0.value = b.getAttribute('data-name'); } MP.sugg = []; MP.err = ''; var ae = document.getElementById('mp-autherr'); if (ae) ae.textContent = ''; b.parentNode.remove(); }
+    else if (a === 'tab-in' || a === 'tab-up' || a === 'tab-code') { MP.tab = a === 'tab-up' ? 'up' : a === 'tab-code' ? 'code' : 'in'; MP.err = ''; MP.msg = ''; MP.sugg = []; MP.fv = { user: MP.fv.user, code: MP.fv.code }; render(); }
+    else if (a === 'pick') { var f0 = document.getElementById('mp-user'); MP.fv.user = b.getAttribute('data-name'); if (f0) { f0.value = MP.fv.user; } MP.sugg = []; MP.err = ''; var ae = document.getElementById('mp-autherr'); if (ae) ae.textContent = ''; b.parentNode.remove(); }
     else if (a === 'signin') {
-      var un0 = mpVal('mp-user'), pw = document.getElementById('mp-pass').value;
+      var un0 = mpVal('mp-user'), pw = document.getElementById('mp-pass').value; MP.fv.user = un0;
       MP.err = ''; MP.msg = '';
       if (!/^[A-Za-z0-9_]{3,16}$/.test(un0)) { MP.err = 'Username: 3 to 16 letters, numbers or _'; render(); return; }
       MP.sb.auth.signInWithPassword({ email: mpEmail(un0), password: pw }).then(function (r) { if (r.error) { MP.err = /invalid login/i.test(r.error.message) ? 'Wrong username or password.' : r.error.message; render(); } else mpAfterSignIn(r.data.user); });
     }
     else if (a === 'signup') {
-      var pw2 = document.getElementById('mp-pass').value, un = mpVal('mp-user');
+      var pw2 = document.getElementById('mp-pass').value, un = mpVal('mp-user'); MP.fv.user = un;
       MP.err = ''; MP.msg = ''; MP.sugg = [];
       if (!/^[A-Za-z0-9_]{3,16}$/.test(un)) { MP.err = 'Username: 3 to 16 letters, numbers or _'; render(); return; }
       if (pw2.length < 6) { MP.err = 'The password needs at least 6 characters.'; render(); return; }
@@ -1848,7 +1849,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       });
     }
     else if (a === 'guest') {
-      var gn = mpVal('mp-user'), gc = mpVal('mp-code').toUpperCase();
+      var gn = mpVal('mp-user'), gc = mpVal('mp-code').toUpperCase(); MP.fv.user = gn; MP.fv.code = gc;
       MP.err = ''; MP.msg = ''; MP.sugg = [];
       if (!/^[A-Za-z0-9_]{3,16}$/.test(gn)) { MP.err = 'Name: 3 to 16 letters, numbers or _'; render(); return; }
       if (!/^[A-Z0-9]{6}$/.test(gc)) { MP.err = 'The room code has 6 letters or numbers.'; render(); return; }
