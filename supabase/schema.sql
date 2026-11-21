@@ -214,3 +214,95 @@ drop policy if exists mp_room_read on realtime.messages;
 drop policy if exists mp_room_write on realtime.messages;
 create policy mp_room_read on realtime.messages for select to authenticated using (public.mp_can_room((select realtime.topic())));
 create policy mp_room_write on realtime.messages for insert to authenticated with check (public.mp_can_room((select realtime.topic())));
+
+-- Formula Life online play, part 2: room codes, guests (join with a code, no account), username checks.
+
+alter table public.mp_rooms add column if not exists code text;
+create unique index if not exists mp_rooms_code on public.mp_rooms (code);
+
+create or replace function public.mp_is_guest() returns boolean
+language sql stable set search_path = public as $$
+  select coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false);
+$$;
+
+-- which of these usernames are still free (callable before signing up)
+create or replace function public.mp_free_names(names text[]) returns text[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(n), '{}') from unnest(names) n
+  where n ~ '^[A-Za-z0-9_]{3,16}$' and not exists (select 1 from public.mp_profiles p where lower(p.username) = lower(n));
+$$;
+
+create or replace function public.mp_create_room(tier_ int, lvl_ int, trk_ int, wet_ boolean) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare rid uuid; c text; k int := 0; chars text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+begin
+  if auth.uid() is null or not exists (select 1 from public.mp_profiles where id = auth.uid()) then raise exception 'Not signed in'; end if;
+  if public.mp_is_guest() then raise exception 'Guests can only join a room with a code'; end if;
+  delete from public.mp_rooms where created < now() - interval '6 hours';
+  delete from auth.users where is_anonymous and created_at < now() - interval '2 days';
+  delete from public.mp_rooms where host = auth.uid();
+  loop
+    c := ''; for k in 1..6 loop c := c || substr(chars, 1 + floor(random() * length(chars))::int, 1); end loop;
+    exit when not exists (select 1 from public.mp_rooms where code = c);
+  end loop;
+  insert into public.mp_rooms (host, tier, lvl, trk, wet, code)
+    values (auth.uid(), least(greatest(tier_, 0), 5), least(greatest(lvl_, 1), 10), least(greatest(trk_, 0), 9), wet_, c)
+    returning id into rid;
+  insert into public.mp_members (room, uid, joined) values (rid, auth.uid(), true);
+  return rid;
+end $$;
+
+create or replace function public.mp_join_code(c text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare r public.mp_rooms;
+begin
+  if auth.uid() is null or not exists (select 1 from public.mp_profiles where id = auth.uid()) then raise exception 'Not signed in'; end if;
+  select * into r from public.mp_rooms where code = upper(trim(c)) and status = 'lobby' and created > now() - interval '6 hours';
+  if not found then raise exception 'No open room with that code'; end if;
+  if not exists (select 1 from public.mp_members where room = r.id and uid = auth.uid()) and (select count(*) from public.mp_members where room = r.id) >= 4 then
+    raise exception 'The room is full (4 players)';
+  end if;
+  insert into public.mp_members (room, uid, joined) values (r.id, auth.uid(), true) on conflict (room, uid) do update set joined = true;
+  return r.id;
+end $$;
+
+create or replace function public.mp_room(rid uuid) returns json
+language plpgsql security definer set search_path = public as $$
+declare res json;
+begin
+  if not exists (select 1 from public.mp_members where room = rid and uid = auth.uid()) then return null; end if;
+  select json_build_object(
+    'id', r.id, 'tier', r.tier, 'lvl', r.lvl, 'trk', r.trk, 'wet', r.wet, 'status', r.status, 'host', r.host,
+    'code', case when r.host = auth.uid() then r.code else null end,
+    'members', (select coalesce(json_agg(json_build_object('uid', m.uid, 'name', p.username, 'joined', m.joined, 'host', m.uid = r.host) order by (m.uid = r.host) desc, p.username), '[]'::json)
+                from public.mp_members m join public.mp_profiles p on p.id = m.uid where m.room = r.id))
+  into res from public.mp_rooms r where r.id = rid;
+  return res;
+end $$;
+
+-- guests cannot send friend requests
+create or replace function public.mp_request(u text) returns text
+language plpgsql security definer set search_path = public as $$
+declare t uuid; ex public.mp_friends;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if public.mp_is_guest() then raise exception 'Guests cannot add friends. Create an account first'; end if;
+  select id into t from public.mp_profiles where lower(username) = lower(u);
+  if t is null then raise exception 'No player with that username'; end if;
+  if t = auth.uid() then raise exception 'That is you'; end if;
+  select * into ex from public.mp_friends where (a = t and b = auth.uid()) or (a = auth.uid() and b = t);
+  if found then
+    if ex.accepted then raise exception 'Already friends'; end if;
+    if ex.a = t then
+      update public.mp_friends set accepted = true where a = t and b = auth.uid();
+      return 'accepted';
+    end if;
+    raise exception 'Request already sent';
+  end if;
+  insert into public.mp_friends (a, b) values (auth.uid(), t);
+  return 'sent';
+end $$;
+
+revoke all on function public.mp_is_guest(), public.mp_free_names(text[]), public.mp_join_code(text) from public;
+grant execute on function public.mp_is_guest(), public.mp_join_code(text) to authenticated;
+grant execute on function public.mp_free_names(text[]) to anon, authenticated;
