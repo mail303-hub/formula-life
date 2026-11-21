@@ -203,11 +203,11 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   var TEAMS2 = ['Redstone Works','Blue Heron Racing','Atlas Garage','Pinecrest Motorsport','Nova Speed','Harrow & Sons','Quillon GP','Foxglove Racing'];
 
   var TIERS = [
-    { name: 'Junior Karting', base: 39, races: 5,  mult: 1, next: 'Senior Karting', kart: true,  kmh: 0.45 },
-    { name: 'Senior Karting', base: 47, races: 6,  mult: 2, next: 'Formula 4',      kart: true,  kmh: 0.6 },
-    { name: 'Formula 4',      base: 54, races: 7,  mult: 3, next: 'Formula 3',      kart: false, kmh: 0.9 },
-    { name: 'Formula 3',      base: 62, races: 8,  mult: 4, next: 'Formula 2',      kart: false, kmh: 1.1 },
-    { name: 'Formula 2',      base: 71, races: 9,  mult: 6, next: 'Formula 1',      kart: false, kmh: 1.3 },
+    { name: 'Junior Karting', base: 39, races: 10,  mult: 1, next: 'Senior Karting', kart: true,  kmh: 0.45 },
+    { name: 'Senior Karting', base: 47, races: 10,  mult: 2, next: 'Formula 4',      kart: true,  kmh: 0.6 },
+    { name: 'Formula 4',      base: 54, races: 10,  mult: 3, next: 'Formula 3',      kart: false, kmh: 0.9 },
+    { name: 'Formula 3',      base: 62, races: 10,  mult: 4, next: 'Formula 2',      kart: false, kmh: 1.1 },
+    { name: 'Formula 2',      base: 71, races: 10,  mult: 6, next: 'Formula 1',      kart: false, kmh: 1.3 },
     { name: 'Formula 1',      base: 80, races: 10, mult: 9, next: null,             kart: false, kmh: 1.4 }
   ];
   var TRACKS = [
@@ -236,6 +236,13 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     medium: { label: 'Medium', it: 1200, desc: 'Wider bends' },
     sharp:  { label: 'Sharp',  it: 400,  desc: 'Tight bends' }
   };
+  /* Track difficulty 1..10 picks how tight the bends are inside the chosen corner range (10 = tightest of that range). */
+  var CORNER_RANGE = { gentle: [3500, 1500], medium: [2200, 700], sharp: [1200, 400] };
+  function trackLvl(tr) { return tr && tr.lvl ? tr.lvl : ((s && s.race || 0) % 10) + 1; }
+  function trackIt(tr) {
+    var key = (s && s.corners) || ui.corners || 'medium', r = CORNER_RANGE[key] || CORNER_RANGE.medium, d = trackLvl(tr);
+    return Math.round(r[0] * Math.pow(r[1] / r[0], (d - 1) / 9));
+  }
   function corners() { return CORNERS[s && s.corners] || CORNERS[ui.corners] || CORNERS.medium; }
   var STATS = [['pace', 'Pace'], ['cons', 'Consistency'], ['wet', 'Wet driving'], ['tyre', 'Tyre care']];
 
@@ -294,7 +301,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       s.drivers.push({ id: 'r' + i, name: names[i], team: teams[i], me: false, pts: 0, wins: 0,
         rating: clamp(t.base + gauss() * 5, 25, 96), wetSkill: gauss() * 6 });
     }
-    s.calendar = shuffle(TRACKS).slice(0, t.races);
+    var lvls = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);   // every season: the 10 tracks come in a random order, each with its own difficulty 1..10
+    s.calendar = shuffle(TRACKS).slice(0, t.races).map(function (q, i) { return { name: q.name, wet: q.wet, lvl: lvls[i % 10] }; });
     s.race = 0;
     s.last = null;
     s.result = null;
@@ -498,7 +506,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   Game.setup = function (canvas) {
     var g = Game, tr = s.calendar[s.race], wet = s.pending.wet, shape = 0;
     TRACKS.forEach(function (t, i) { if (t.name === tr.name) shape = i; });
-    g.tk = buildTrack(shape, corners()); g.wet = wet; g.kart = tier().kart; g.kmh = tier().kmh; CAMH = g.kart ? 6.5 : 9; g.lastBeep = 0; g.goT = 0; g.t = 0; g.cd = 3.0; g.state = 'count'; g.order = null; g.canvas = canvas;
+    g.tk = buildTrack(shape, { it: trackIt(tr) }); g.wet = wet; g.kart = tier().kart; g.kmh = tier().kmh; CAMH = g.kart ? 6.5 : 9; g.lastBeep = 0; g.goT = 0; g.t = 0; g.cd = 3.0; g.state = 'count'; g.order = null; g.canvas = canvas;
     var pr = playerBase(wet), pp = carParams(pr, wet);
     g.pvmax = pp.vmax; g.paLat = pp.aLat;
     var rated = s.drivers.map(function (d) { return { d: d, r: d.me ? pr + gauss() * 4 : d.rating + diff().r + (wet ? d.wetSkill : 0) + gauss() * 4 }; })
@@ -1258,7 +1266,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     var tr = s.calendar[s.race], t = tier(), can = s.money >= trainCost();
     if (!can && /^(pace|cons|wet|tyre)$/.test(ui.action)) ui.action = 'rest';
     var h = '<div class="card"><div class="weekend"><h2>Race ' + (s.race + 1) + ' of ' + s.calendar.length + ': ' + esc(tr.name) + '</h2>';
-    h += '<span class="chip">Rain chance ' + s.rain + '%</span><span class="chip">Entry fee ' + money(20 * t.mult) + '</span></div>';
+    h += '<span class="chip">Track difficulty ' + trackLvl(tr) + '/10</span><span class="chip">Rain chance ' + s.rain + '%</span><span class="chip">Entry fee ' + money(20 * t.mult) + '</span></div>';
     h += '<div class="label">Opponents</div><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">';
     Object.keys(DIFF).forEach(function (k) { h += opt('diff', k, (s.diff || 'medium') === k, DIFF[k].label, DIFF[k].desc, false); });
     h += '</div><div class="label">Corners</div><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">';
@@ -1308,7 +1316,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     } else if (s.tier === TIERS.length - 1) {
       h += '<p>Keep racing to defend your place at the top.</p><button class="btn" data-go="stay">Start season ' + (s.season + 1) + '</button>';
     } else {
-      h += '<p>Finish in the top three to get an offer from ' + esc(t.next) + '. Train hard and try again.</p><button class="btn" data-go="stay">Start season ' + (s.season + 1) + '</button>';
+      h += '<p>Finish the 10-race season in the top three to get an offer from ' + esc(t.next) + '. Train hard and try again.</p><button class="btn" data-go="stay">Start season ' + (s.season + 1) + '</button>';
     }
     h += '<p class="mute" style="margin-top:12px;font-size:.9rem">A new season gives +2 to every skill and fully restores your energy.</p></div>';
     return h;
@@ -1316,7 +1324,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
 
   function driveView() {
     var tr = s.calendar[s.race];
-    return '<div class="card"><div class="weekend"><h2>' + esc(tr.name) + '</h2><span class="chip">' + (s.pending.wet ? 'Wet: less grip' : 'Dry') + '</span><span class="chip">' + LAPS + ' laps</span></div>' +
+    return '<div class="card"><div class="weekend"><h2>' + esc(tr.name) + '</h2><span class="chip">Difficulty ' + trackLvl(tr) + '/10</span><span class="chip">' + (s.pending.wet ? 'Wet: less grip' : 'Dry') + '</span><span class="chip">' + LAPS + ' laps</span></div>' +
       '<div class="stage" id="stage"><div class="hud mono"><span id="hud-lap">Lap 1/' + LAPS + '</span><span id="hud-pos">P?</span><span id="hud-spd">0 km/h</span><span id="hud-time">0:00.0</span><span id="hud-off" class="bad"></span><span id="hud-pad" class="mute"></span><button class="btn ghost" data-go="fs" id="fsbtn" style="margin-left:auto">Full screen (F)</button><button class="btn ghost" data-go="snd" id="sndbtn">' + (Snd.mute ? 'Sound: Off (M)' : 'Sound: On (M)') + '</button><button class="btn ghost" data-go="pad">Gamepad setup</button></div>' +
       '<div class="canvaswrap"><canvas id="cv"></canvas><div class="driveover" id="driveover" hidden></div></div>' +
       '<div class="rotovl"><p class="big" style="font-size:2rem">Turn your phone sideways</p><p class="mute">The race plays in landscape, full screen.</p><button class="btn ghost" data-go="fs">Exit full screen</button></div><div class="touch"><div class="slider v" data-slider="pedal" aria-label="Gas and brake slider"><span class="lbl a">Gas</span><span class="lbl b">Brake</span><i class="thumb"></i></div><div class="slider h" data-slider="steer" aria-label="Steering slider"><span class="lbl a">&#9664;</span><span class="lbl b">&#9654;</span><i class="thumb"></i></div></div></div>' +
@@ -1337,7 +1345,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   }
 
   function startView() {
-    return '<div class="card start"><h2 style="margin-bottom:10px">Start your career</h2><p>You begin in junior karting with a small budget. Win races, build your reputation and climb through senior karting, then Formula 4, 3 and 2 to Formula 1.</p>' +
+    return '<div class="card start"><h2 style="margin-bottom:10px">Start your career</h2><p>You begin in junior karting with a small budget. Every level is 10 tracks of rising and random difficulty. Win races, build your reputation and climb through senior karting, then Formula 4, 3 and 2 to Formula 1.</p>' +
       '<p class="label" style="margin-top:16px">Driver name</p><p><input id="name" type="text" maxlength="20" placeholder="Your name" value="' + esc(ui.name) + '"></p>' +
       '<p class="label">Opponents</p><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">' + Object.keys(DIFF).map(function (k) { return opt('diff', k, ui.diff === k, DIFF[k].label, DIFF[k].desc, false); }).join('') + '</div>' +
       '<p class="label">Corners</p><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">' + Object.keys(CORNERS).map(function (k) { return opt('corners', k, ui.corners === k, CORNERS[k].label, CORNERS[k].desc, false); }).join('') + '</div>' +
