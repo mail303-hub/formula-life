@@ -306,3 +306,35 @@ end $$;
 revoke all on function public.mp_is_guest(), public.mp_free_names(text[]), public.mp_join_code(text) from public;
 grant execute on function public.mp_is_guest(), public.mp_join_code(text) to authenticated;
 grant execute on function public.mp_free_names(text[]) to anon, authenticated;
+
+-- Part 3: a room stays joinable by code after a race has started (so a player who left can come back, and the host can race again).
+create or replace function public.mp_join_code(c text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare r public.mp_rooms;
+begin
+  if auth.uid() is null or not exists (select 1 from public.mp_profiles where id = auth.uid()) then raise exception 'Not signed in'; end if;
+  select * into r from public.mp_rooms where code = upper(trim(c)) and created > now() - interval '6 hours';
+  if not found then raise exception 'No open room with that code'; end if;
+  if not exists (select 1 from public.mp_members where room = r.id and uid = auth.uid()) and (select count(*) from public.mp_members where room = r.id) >= 4 then
+    raise exception 'The room is full (4 players)';
+  end if;
+  insert into public.mp_members (room, uid, joined) values (r.id, auth.uid(), true) on conflict (room, uid) do update set joined = true;
+  return r.id;
+end $$;
+
+create or replace function public.mp_join(rid uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.mp_rooms where id = rid) then raise exception 'The room is closed'; end if;
+  update public.mp_members set joined = true where room = rid and uid = auth.uid();
+  if not found then raise exception 'You are not invited'; end if;
+end $$;
+
+create or replace function public.mp_invites() returns table (room uuid, host_name text, tier int, lvl int, wet boolean)
+language sql security definer set search_path = public as $$
+  select r.id, p.username, r.tier, r.lvl, r.wet
+  from public.mp_members m
+  join public.mp_rooms r on r.id = m.room
+  join public.mp_profiles p on p.id = r.host
+  where m.uid = auth.uid() and not m.joined and r.created > now() - interval '2 hours';
+$$;
