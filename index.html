@@ -152,6 +152,11 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
 .stage.fs .canvaswrap { width: min(100%, calc((100vh - var(--reserve)) * 1.6071)); width: min(100%, calc((100dvh - var(--reserve)) * 1.6071)); }
 .stage.fs .touch { width: 100%; margin: 0; }
 @media (pointer: fine) { .stage.fs .touch { display: none; } .stage.fs { --reserve: 56px; } }
+.lvgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 8px 0 16px; }
+.lv { padding: 12px 4px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 4px; font-family: var(--font-data); font-size: 1rem; }
+.lv.done { border-color: var(--good); }
+.lv.sel { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); background: var(--hi); font-weight: 700; }
+.lv:disabled { opacity: .45; cursor: not-allowed; }
 .rotovl { display: none; }
 /* Phones and tablets, portrait: ask to turn the phone, the race plays in landscape */
 @media (pointer: coarse) and (orientation: portrait) {
@@ -289,6 +294,10 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     startSeason(false);
   }
 
+  /* Each level has 10 tracks, difficulty 1..10 (1 = gentlest bends). The track names are shuffled every season. */
+  function buildCalendar() { return shuffle(TRACKS).slice(0, 10).map(function (q, i) { return { name: q.name, wet: q.wet, lvl: i + 1 }; }); }
+  function progLvl() { s.prog = s.prog || {}; return clamp(s.prog[s.tier] || 0, 0, 10); }   // highest track difficulty cleared in this level
+  function trackNow() { var n = s.calendar.length; return s.calendar[clamp(s.cur != null ? s.cur : s.race, 0, n - 1)]; }
   function startSeason(develop) {
     var t = tier();
     if (develop) {
@@ -302,8 +311,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       s.drivers.push({ id: 'r' + i, name: names[i], team: teams[i], me: false, pts: 0, wins: 0,
         rating: clamp(t.base + gauss() * 5, 25, 96), wetSkill: gauss() * 6 });
     }
-    var lvls = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);   // every season: the 10 tracks come in a random order, each with its own difficulty 1..10
-    s.calendar = shuffle(TRACKS).slice(0, t.races).map(function (q, i) { return { name: q.name, wet: q.wet, lvl: lvls[i % 10] }; });
+    s.calendar = buildCalendar();
     s.race = 0;
     s.last = null;
     s.result = null;
@@ -322,7 +330,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   }
 
   function setupWeekend() {
-    var tr = s.calendar[s.race];
+    s.cur = Math.min(progLvl(), s.calendar.length - 1);   // default: the next track you have not cleared yet
+    var tr = trackNow();
     s.rain = clamp(Math.round(tr.wet + (Math.random() - 0.5) * 20), 0, 95);
     s.phase = 'prep';
     ui.action = 'pace';
@@ -336,7 +345,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   }
 
   function runWeekend(action, stratKey, driven) {
-    var t = tier(), tr = s.calendar[s.race], st = STRATS[stratKey] || STRATS.balanced, notes = [];
+    var t = tier(), tr = trackNow(), st = STRATS[stratKey] || STRATS.balanced, notes = [];
     var spent = 0, earned = 0, wet;
 
     if (driven) {
@@ -399,7 +408,15 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     var repD = mine.dnf ? -2 : mine.pos <= 3 ? 3 : mine.pos <= 6 ? 1 : 0;
     s.rep = clamp(s.rep + repD, 0, 100);
     s.energy = clamp(s.energy - 15, 0, 100);
-
+    var lvlNote = null;
+    if (!mine.dnf && mine.pos <= 3 && tr.lvl === progLvl() + 1) {   // podium on the next locked difficulty clears it
+      s.prog[s.tier] = tr.lvl;
+      if (tr.lvl >= 10) {
+        s.cleared = s.cleared || []; if (s.cleared.indexOf(s.tier) < 0) s.cleared.push(s.tier);
+        if (s.tier < TIERS.length - 1) { s.unlocked = Math.max(unlockedTier(), s.tier + 1); lvlNote = { t: 'Track difficulty 10 cleared! You finished ' + tier().name + ' and ' + TIERS[s.tier + 1].name + ' is unlocked.', c: 'good' }; }
+        else lvlNote = { t: 'Track difficulty 10 cleared! You finished Formula 1.', c: 'good' };
+      } else lvlNote = { t: 'Track difficulty ' + tr.lvl + ' cleared! Difficulty ' + (tr.lvl + 1) + ' is unlocked.', c: 'good' };
+    } else if (!mine.dnf && mine.pos > 3 && tr.lvl === progLvl() + 1) lvlNote = { t: 'Finish in the top three to clear difficulty ' + tr.lvl + ' and unlock the next one. Try this track again.' };
     if (driven && driven.order) notes.push({ t: 'You drove this race yourself.' });
     notes.unshift({ t: wet ? 'Rain at ' + tr.name + '. The track was wet for the whole race.' : tr.name + ' stayed dry.' });
     if (mine.dnf) {
@@ -413,6 +430,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     } else {
       notes.push({ t: 'You finished ' + ord(mine.pos) + ' and missed the points. A stronger car and better skills will change that.' });
     }
+    if (lvlNote) notes.push(lvlNote);
     notes.push({ t: 'Prize money ' + money(prize) + ', costs ' + money(-spent) + '.' + (repD ? ' Reputation ' + (repD > 0 ? '+' : '') + repD + '.' : '') });
     if (s.energy < 30) notes.push({ t: 'Your energy is low. Consider resting next weekend.', c: 'bad' });
 
@@ -434,11 +452,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     var bonus = pos === 1 ? 200 * t.mult : pos === 2 ? 100 * t.mult : pos === 3 ? 50 * t.mult : 0;
     s.money += bonus;
     s.rep = clamp(s.rep + (pos === 1 ? 10 : pos <= 3 ? 5 : 0), 0, 100);
-    s.result = { pos: pos, bonus: bonus, promote: pos <= 3 && s.tier < TIERS.length - 1, champion: pos === 1 };
-    if (pos <= 3) {   // a level is cleared by finishing its 10 races in the top three; that unlocks the next level
-      s.cleared = s.cleared || []; if (s.cleared.indexOf(s.tier) < 0) s.cleared.push(s.tier);
-      s.unlocked = Math.max(unlockedTier(), Math.min(TIERS.length - 1, s.tier + 1));
-    }
+    s.result = { pos: pos, bonus: bonus, promote: unlockedTier() > s.tier && s.tier < TIERS.length - 1, champion: pos === 1 };
   }
 
   /* ---------- drivable race ---------- */
@@ -509,7 +523,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   }
 
   Game.setup = function (canvas) {
-    var g = Game, tr = s.calendar[s.race], wet = s.pending.wet, shape = 0;
+    var g = Game, tr = trackNow(), wet = s.pending.wet, shape = 0;
     TRACKS.forEach(function (t, i) { if (t.name === tr.name) shape = i; });
     g.tk = buildTrack(shape, { it: trackIt(tr) }); g.wet = wet; g.kart = tier().kart; g.kmh = tier().kmh; CAMH = g.kart ? 6.5 : 9; g.lastBeep = 0; g.goT = 0; g.t = 0; g.cd = 3.0; g.state = 'count'; g.order = null; g.canvas = canvas;
     var pr = playerBase(wet), pp = carParams(pr, wet);
@@ -1235,7 +1249,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   document.addEventListener('pointerup', endTouch); document.addEventListener('pointercancel', endTouch);
   document.addEventListener('contextmenu', function (e) { if (e.target.closest && e.target.closest('.stage')) e.preventDefault(); });
   window.addEventListener('blur', function () { Game.kb = {}; clearTouch(); });
-  window.__fl = { buildTrack: buildTrack, CORNERS: CORNERS, Game: Game, profile: profile, carRear: carRear, kartRear: kartRear, Snd: Snd };
+  window.__fl = { S: function () { return s; }, runWeekend: runWeekend, buildTrack: buildTrack, CORNERS: CORNERS, Game: Game, profile: profile, carRear: carRear, kartRear: kartRear, Snd: Snd };
 
   /* ---------- rendering ---------- */
   function statBar(label, v, cls) {
@@ -1268,10 +1282,17 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   }
 
   function prepView() {
-    var tr = s.calendar[s.race], t = tier(), can = s.money >= trainCost();
+    var tr = trackNow(), t = tier(), can = s.money >= trainCost();
     if (!can && /^(pace|cons|wet|tyre)$/.test(ui.action)) ui.action = 'rest';
-    var h = '<div class="card"><div class="weekend"><h2>Race ' + (s.race + 1) + ' of ' + s.calendar.length + ': ' + esc(tr.name) + '</h2>';
-    h += '<span class="chip">Track difficulty ' + trackLvl(tr) + '/10</span><span class="chip">Rain chance ' + s.rain + '%</span><span class="chip">Entry fee ' + money(20 * t.mult) + '</span></div>';
+    var h = '<div class="card"><div class="weekend"><h2>' + esc(tr.name) + '</h2>';
+    h += '<span class="chip">Track difficulty ' + trackLvl(tr) + '/10</span><span class="chip">Race ' + (s.race + 1) + ' of ' + s.calendar.length + ' this season</span><span class="chip">Rain chance ' + s.rain + '%</span><span class="chip">Entry fee ' + money(20 * t.mult) + '</span></div>';
+    h += '<div class="label">Choose track difficulty (clear one in the top three to unlock the next)</div><div class="lvgrid">';
+    var pl = progLvl();
+    s.calendar.forEach(function (q, i) {
+      var n = i + 1, locked = n > pl + 1, done = n <= pl, sel = trackNow() === q;
+      h += '<button class="lv' + (sel ? ' sel' : '') + (done ? ' done' : '') + '" data-go="lvl" data-i="' + i + '"' + (locked ? ' disabled aria-label="Difficulty ' + n + ', locked"' : '') + '>' + (locked ? '&#128274;' : done ? '&#10003; ' + n : n) + '</button>';
+    });
+    h += '</div>';
     h += '<div class="label">Opponents</div><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">';
     Object.keys(DIFF).forEach(function (k) { h += opt('diff', k, (s.diff || 'medium') === k, DIFF[k].label, DIFF[k].desc, false); });
     h += '</div><div class="label">Corners</div><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">';
@@ -1316,19 +1337,19 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     }
     h += '<div class="row" style="justify-content:flex-start;gap:24px;margin-bottom:12px"><div><div class="label">Final position</div><div class="big">' + ord(r.pos) + '</div></div><div><div class="label">Season bonus</div><div class="big">' + money(r.bonus) + '</div></div></div>';
     if (r.promote) {
-      h += '<p>Top three finish: you are offered a seat in <b>' + esc(t.next) + '</b>. Rivals there are stronger, so expect a tougher fight.</p>';
+      h += '<p>You cleared all 10 track difficulties: you are offered a seat in <b>' + esc(t.next) + '</b>. Rivals there are stronger, so expect a tougher fight.</p>';
       h += '<div class="row" style="justify-content:flex-start"><button class="btn" data-go="promote">Step up to ' + esc(t.next) + '</button><button class="btn secondary" data-go="stay">Stay in ' + esc(t.name) + '</button></div>';
     } else if (s.tier === TIERS.length - 1) {
       h += '<p>Keep racing to defend your place at the top.</p><button class="btn" data-go="stay">Start season ' + (s.season + 1) + '</button>';
     } else {
-      h += '<p>Finish the 10-race season in the top three to get an offer from ' + esc(t.next) + '. Train hard and try again.</p><button class="btn" data-go="stay">Start season ' + (s.season + 1) + '</button>';
+      h += '<p>Clear all 10 track difficulties (podium on each) to get an offer from ' + esc(t.next) + '. Train hard and try again.</p><button class="btn" data-go="stay">Start season ' + (s.season + 1) + '</button>';
     }
     h += '<p class="mute" style="margin-top:12px;font-size:.9rem">A new season gives +2 to every skill and fully restores your energy.</p></div>';
     return h;
   }
 
   function driveView() {
-    var tr = s.calendar[s.race];
+    var tr = trackNow();
     return '<div class="card"><div class="weekend"><h2>' + esc(tr.name) + '</h2><span class="chip">Difficulty ' + trackLvl(tr) + '/10</span><span class="chip">' + (s.pending.wet ? 'Wet: less grip' : 'Dry') + '</span><span class="chip">' + LAPS + ' laps</span></div>' +
       '<div class="stage" id="stage"><div class="hud mono"><span id="hud-lap">Lap 1/' + LAPS + '</span><span id="hud-pos">P?</span><span id="hud-spd">0 km/h</span><span id="hud-time">0:00.0</span><span id="hud-off" class="bad"></span><span id="hud-pad" class="mute"></span><button class="btn ghost" data-go="fs" id="fsbtn" style="margin-left:auto">Full screen (F)</button><button class="btn ghost" data-go="snd" id="sndbtn">' + (Snd.mute ? 'Sound: Off (M)' : 'Sound: On (M)') + '</button><button class="btn ghost" data-go="pad">Gamepad setup</button></div>' +
       '<div class="canvaswrap"><canvas id="cv"></canvas><div class="driveover" id="driveover" hidden></div></div>' +
@@ -1338,13 +1359,13 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   }
 
   function levelsView() {
-    var un = unlockedTier(), cl = s.cleared || [];
-    var h = '<div class="card"><div class="head"><h2>Choose level</h2><span class="label">Finish a level in the top three to unlock the next</span></div><div class="opts" style="grid-template-columns:1fr">';
+    var un = unlockedTier();
+    var h = '<div class="card"><div class="head"><h2>Choose level</h2><span class="label">Clear all 10 tracks to unlock the next level</span></div><div class="opts" style="grid-template-columns:1fr">';
     TIERS.forEach(function (q, i) {
-      var locked = i > un, cur = i === s.tier, done = cl.indexOf(i) >= 0;
-      var st = locked ? 'Locked. Finish ' + TIERS[i - 1].name + ' in the top three first.' : done ? 'Cleared' + (cur ? ', current level' : '') : cur ? 'Current level' : 'Unlocked';
+      var locked = i > un, cur = i === s.tier, pr = clamp((s.prog || {})[i] || 0, 0, 10), done = pr >= 10;
+      var st = locked ? 'Locked. Clear all 10 tracks of ' + TIERS[i - 1].name + ' first.' : done ? 'Cleared' + (cur ? ', current level' : '') : (cur ? 'Current level' : 'Unlocked') + ', ' + pr + '/10 tracks cleared';
       var warn = ui.confirmTier === i && !locked && !cur;
-      h += '<div class="opt"><button class="offer" data-go="pick" data-i="' + i + '"' + (locked ? ' disabled' : '') + '><span class="t">' + (locked ? '&#128274; ' : done ? '&#10003; ' : '') + esc(q.name) + '</span><span class="d">' + (warn ? 'Tap again to leave this season and start ' + esc(q.name) : st) + ' &middot; 10 tracks</span></button></div>';
+      h += '<div class="opt"><button class="offer" data-go="pick" data-i="' + i + '"' + (locked ? ' disabled' : '') + '><span class="t">' + (locked ? '&#128274; ' : done ? '&#10003; ' : '') + esc(q.name) + '</span><span class="d">' + (warn ? 'Tap again to leave this season and start ' + esc(q.name) : st) + '</span></button></div>';
     });
     h += '</div><button class="btn secondary" data-go="levels">Back</button></div>';
     return h;
@@ -1363,7 +1384,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   }
 
   function startView() {
-    return '<div class="card start"><h2 style="margin-bottom:10px">Start your career</h2><p>You begin in junior karting with a small budget. Every level is 10 tracks of rising and random difficulty. Win races, build your reputation and climb through senior karting, then Formula 4, 3 and 2 to Formula 1.</p>' +
+    return '<div class="card start"><h2 style="margin-bottom:10px">Start your career</h2><p>You begin in junior karting with a small budget. Every level has 10 tracks of rising difficulty. Clear one on the podium to unlock the next. Win races, build your reputation and climb through senior karting, then Formula 4, 3 and 2 to Formula 1.</p>' +
       '<p class="label" style="margin-top:16px">Driver name</p><p><input id="name" type="text" maxlength="20" placeholder="Your name" value="' + esc(ui.name) + '"></p>' +
       '<p class="label">Opponents</p><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">' + Object.keys(DIFF).map(function (k) { return opt('diff', k, ui.diff === k, DIFF[k].label, DIFF[k].desc, false); }).join('') + '</div>' +
       '<p class="label">Corners</p><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">' + Object.keys(CORNERS).map(function (k) { return opt('corners', k, ui.corners === k, CORNERS[k].label, CORNERS[k].desc, false); }).join('') + '</div>' +
@@ -1434,6 +1455,10 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     else if (g === 'driveSkip') { runWeekend(null, ui.strat, { sim: true }); }
     else if (g === 'next') { if (s.race < s.calendar.length) { setupWeekend(); save(); } }
     else if (g === 'season') { s.phase = 'season'; save(); }
+    else if (g === 'lvl') {
+      var li = +b.getAttribute('data-i');
+      if (li <= progLvl() && s.phase === 'prep') { s.cur = li; var qt = trackNow(); s.rain = clamp(Math.round(qt.wet + (Math.random() - 0.5) * 20), 0, 95); save(); }
+    }
     else if (g === 'levels') { ui.levels = !ui.levels; ui.confirmTier = null; }
     else if (g === 'pick') {
       var ti = +b.getAttribute('data-i');
@@ -1456,6 +1481,13 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   });
 
   s = load();
+  if (s && s.calendar) {   // older saves: make sure the calendar has the 10 tracks in difficulty order and carry the cleared levels over
+    s.prog = s.prog || {};
+    (s.cleared || []).forEach(function (i) { s.prog[i] = 10; });
+    var okCal = s.calendar.length === 10 && s.calendar.every(function (q, i) { return q.lvl === i + 1; });
+    if (!okCal) { s.calendar = buildCalendar(); s.race = Math.min(s.race || 0, 9); }
+    if (s.phase === 'prep') s.cur = Math.min(progLvl(), 9);
+  }
   render();
 })();
 </script>
