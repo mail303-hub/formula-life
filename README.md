@@ -8,7 +8,7 @@ A browser game: climb from junior karting to Formula 1.
 - Team offers by reputation, weekend actions (training, rest, sponsors)
 - Drive every race yourself (first-person view, full screen, barriers, rival contact)
 - Sound, keyboard, gamepad (with button mapping) and on-screen touch sliders for phones
-- Online races with friends: account = username + password (no email), friend requests, private rooms of up to 4 players; guests can join with a 6-character room code, no account
+- Online races with friends: account = username + password (no email), friend requests, private rooms of up to 4 players; guests can join with a 6-character room code or an invite link (`?join=CODE`), no account
 - Progress is saved in the browser (localStorage)
 
 ## Run

@@ -1745,7 +1745,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
         '<label>Track <select data-mpset="trk">' + TRACKS.map(function (q, i) { return '<option value="' + i + '"' + (r.trk === i ? ' selected' : '') + '>' + esc(q.name) + '</option>'; }).join('') + '</select></label>' +
         '<label>Difficulty <select data-mpset="lvl">' + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (n) { return '<option value="' + n + '"' + (r.lvl === n ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></label>' +
         '<label>Weather <select data-mpset="wet"><option value="0"' + (r.wet ? '' : ' selected') + '>Dry</option><option value="1"' + (r.wet ? ' selected' : '') + '>Wet</option></select></label></div>';
-      if (r.code) h += '<p>Room code: <b class="mono" style="font-size:1.4rem;letter-spacing:.15em">' + esc(r.code) + '</b><br><span class="mute">A friend without an account can join with this code (Friends, Join with a code).</span></p>';
+      if (r.code) h += '<p>Room code: <b class="mono" style="font-size:1.4rem;letter-spacing:.15em">' + esc(r.code) + '</b><br><span class="mute">A friend without an account can join with this code (Friends, Join with a code).</span><br><button class="btn ghost" data-mp="copyinvite">Copy invite</button></p>';
       h += '<p class="mute">Invite friends from the list below (up to 4 players), or give them the code.</p><p><button class="btn" data-mp="startrace">Start race</button> <button class="btn ghost" data-mp="leave">Close room</button></p>';
     } else {
       h += '<p class="mute">' + esc(TIERS[r.tier].name) + ', ' + esc(TRACKS[r.trk % TRACKS.length].name) + ', difficulty ' + r.lvl + ', ' + (r.wet ? 'wet' : 'dry') + '. Waiting for the host to start.</p><p><button class="btn ghost" data-mp="leave">Leave room</button></p>';
@@ -1864,6 +1864,14 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
           .catch(function (er) { MP.err = /anonymous/i.test(mpErr(er)) ? 'Guest play is not switched on yet.' : mpErr(er); render(); });
       });
     }
+    else if (a === 'copyinvite') {
+      var code = MP.room && MP.room.code; if (!code) return;
+      var link = 'https://mail303-hub.github.io/formula-life/?join=' + code, txt = 'Race me in Formula Life! Open ' + link + ' (room code ' + code + ')';
+      var done = function () { MP.err = ''; MP.msg = 'Invite copied. Paste it to your friend.'; mpDraw(false); };
+      if (navigator.share && matchMedia('(pointer: coarse)').matches) navigator.share({ text: txt }).then(null, function () {});
+      else if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, function () { MP.msg = 'Copy this: ' + txt; mpDraw(false); });
+      else { MP.msg = 'Copy this: ' + txt; mpDraw(false); }
+    }
     else if (a === 'joincode') {
       var jc = mpVal('mp-code').toUpperCase();
       if (!/^[A-Z0-9]{6}$/.test(jc)) { MP.err = 'The room code has 6 letters or numbers.'; MP.msg = ''; mpDraw(false); return; }
@@ -1909,6 +1917,19 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     if (s.phase === 'prep') s.cur = Math.min(progLvl(), 9);
   }
   render();
+  var inviteCode = ''; try { var jm = /[?&]join=([A-Za-z0-9]{6})(?![A-Za-z0-9])/.exec(location.search); if (jm) inviteCode = jm[1].toUpperCase(); } catch (e) {}
+  if (inviteCode && mpOnline()) {   // opened from an invite link: go straight to the join form (or join at once when signed in)
+    ui.screen = 'friends'; MP.tab = 'code'; MP.fv.code = inviteCode; MP.loading = true; render();
+    mpConnect(function (err) {
+      MP.loading = false; if (err) MP.err = err;
+      if (MP.user && MP.name) {
+        mpStartTimers();
+        return rpc('mp_join_code', { c: inviteCode }).then(function (rid) { MP.rid = rid; mpSubscribe(rid); render(); return mpRefresh(); }, function (e) { MP.err = mpErr(e); render(); mpRefresh(); });
+      }
+      render();
+    });
+    try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {}
+  } else
   try { if (mpOnline() && localStorage.getItem(MPK) === '1') mpConnect(function () { if (MP.user && MP.name) mpStartTimers(); }); } catch (e) {}
 })();
 </script>
