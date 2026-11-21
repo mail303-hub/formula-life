@@ -1648,7 +1648,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
         if (ui.screen === 'friends') mpDraw(false);
       });
     };
-    try { Promise.resolve(MP.sb.realtime.setAuth()).then(go, go); } catch (e) { go(); }
+    // give the realtime socket the signed-in user's token explicitly (after a page reload it would keep the public key)
+    try { MP.sb.auth.getSession().then(function (r) { var t = r && r.data && r.data.session && r.data.session.access_token; return t ? MP.sb.realtime.setAuth(t) : null; }).then(go, go); } catch (e) { go(); }
   }
   function mpRecv(ev, d) {
     if (!d) return;
