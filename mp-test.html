@@ -1629,16 +1629,26 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   /* realtime room channel */
   function mpSend(type, data) { if (MP.ch) { try { MP.ch.send({ type: 'broadcast', event: type, payload: data }); } catch (e) {} } }
   function mpUnsub() { if (MP.ch) { try { MP.sb.removeChannel(MP.ch); } catch (e) {} MP.ch = null; MP.chOk = false; } }
-  function mpSubscribe(rid) {
-    mpUnsub();
+  function mpSubscribe(rid, tries) {
+    tries = tries || 0; mpUnsub();
     var ch = MP.sb.channel('room:' + rid, { config: { private: true, broadcast: { self: false, ack: false } } });
     ['start', 'ready', 'go', 'st', 'fin'].forEach(function (ev) { ch.on('broadcast', { event: ev }, function (m) { mpRecv(ev, m.payload); }); });
-    ch.subscribe(function (status) {
-      MP.chOk = status === 'SUBSCRIBED';
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') MP.err = 'Could not open the race channel (' + status + '). Try leaving and joining again.';
-      if (ui.screen === 'friends') mpDraw(false);
-    });
     MP.ch = ch;
+    var retry = setTimeout(function () {   // a join can hang right after sign-in: start over a few times
+      if (MP.ch !== ch || MP.chOk || MP.rid !== rid) return;
+      if (tries < 4) mpSubscribe(rid, tries + 1);
+      else { MP.err = 'Could not open the race channel. Try leaving and joining again.'; if (ui.screen === 'friends') mpDraw(false); }
+    }, 6000);
+    var go = function () {
+      if (MP.ch !== ch) return;
+      ch.subscribe(function (status) {
+        if (MP.ch !== ch) return;
+        MP.chOk = status === 'SUBSCRIBED'; if (MP.chOk) clearTimeout(retry);
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') { clearTimeout(retry); if (tries < 4) setTimeout(function () { if (MP.ch === ch && !MP.chOk) mpSubscribe(rid, tries + 1); }, 1500); else MP.err = 'Could not open the race channel (' + status + '). Try leaving and joining again.'; }
+        if (ui.screen === 'friends') mpDraw(false);
+      });
+    };
+    try { Promise.resolve(MP.sb.realtime.setAuth()).then(go, go); } catch (e) { go(); }
   }
   function mpRecv(ev, d) {
     if (!d) return;
