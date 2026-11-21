@@ -1616,11 +1616,19 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     var jobs = [rpc('mp_friends'), rpc('mp_invites'), MP.rid ? rpc('mp_room', { rid: MP.rid }) : Promise.resolve(null)];
     return Promise.all(jobs).then(function (r) {
       MP.friends = r[0] || []; MP.invites = r[1] || [];
-      if (MP.rid) { MP.room = r[2]; if (!MP.room) mpDropRoom('The room was closed.'); }
+      if (MP.rid) { MP.room = r[2]; if (!MP.room) mpDropRoom('The room was closed.'); else mpPollStart(); }
       mpDraw(false);
     }, function (e) { MP.err = mpErr(e); mpDraw(false); });
   }
-  function mpDropRoom(msg) { mpUnsub(); MP.rid = null; MP.room = null; MP.ready = {}; if (msg) MP.msg = msg; }
+  /* If the live "start" message was missed (for example the phone was in the background), the room's race counter shows that a race began. */
+  function mpPollStart() {
+    var r = MP.room; if (!r) return;
+    if (MP.seenRid !== r.id) { MP.seenRid = r.id; MP.seen = r.rnd || 0; return; }
+    if (r.status === 'racing' && (r.rnd || 0) > MP.seen && !MP.race && ui.screen === 'friends') {
+      mpBegin({ players: r.members.filter(function (m) { return m.joined; }).map(function (m) { return { uid: m.uid, name: m.name }; }), tier: r.tier, lvl: r.lvl, trk: r.trk, wet: r.wet, rnd: r.rnd });
+    }
+  }
+  function mpDropRoom(msg) { MP.seenRid = null; mpUnsub(); MP.rid = null; MP.room = null; MP.ready = {}; if (msg) MP.msg = msg; }
   function mpAct(p, okMsg) {   // run a request, then refresh the lists
     MP.err = ''; MP.msg = '';
     return p.then(function (d) { if (okMsg) MP.msg = okMsg; return mpRefresh().then(function () { return d; }); }, function (e) { MP.err = mpErr(e); mpDraw(false); });
@@ -1662,7 +1670,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   function mpBegin(d) {
     if (ui.screen === 'mprace' && Game.on && Game.state !== 'done') return;   // a race is running; after the finish a new start is welcome
     if (Game.on) Game.stop();
-    MP.ready = {}; MP.pendingGo = false;
+    MP.ready = {}; MP.pendingGo = false; if (d.rnd) { MP.seen = d.rnd; MP.seenRid = MP.rid; }
     MP.race = { players: d.players, tier: d.tier, lvl: d.lvl, trk: d.trk, wet: !!d.wet, me: MP.user.id, myName: MP.name, send: mpSend };
     ui.screen = 'mprace'; render();
   }
@@ -1670,6 +1678,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     if (!MP.race) return;
     MP.ready[MP.user.id] = true; mpSend('ready', { u: MP.user.id });
     if (mpIsHost()) { mpCheckGo(); setTimeout(function () { if (Game.mp && Game.state === 'wait') mpGo(); }, 15000); }
+    else setTimeout(function () { if (Game.mp && Game.state === 'wait') Game.mpOn('go'); }, 25000);   // the host's go message never came: start anyway
   }
   function mpCheckGo() { if (!mpIsHost() || !MP.race || !Game.on || Game.state !== 'wait') return; if (MP.race.players.every(function (p) { return MP.ready[p.uid]; })) mpGo(); }
   function mpGo() { mpSend('go', {}); Game.mpOn('go'); }
@@ -1677,8 +1686,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     var r = MP.room; if (!r || !mpIsHost()) return;
     var pl = r.members.filter(function (m) { return m.joined; }).map(function (m) { return { uid: m.uid, name: m.name }; });
     if (pl.length < 2) { MP.err = 'Invite a friend first. You need at least two players.'; return mpDraw(false); }
-    rpc('mp_room_status', { rid: MP.rid, st: 'racing' }).then(function () {
-      var d = { players: pl, tier: r.tier, lvl: r.lvl, trk: r.trk, wet: r.wet };
+    rpc('mp_room_status', { rid: MP.rid, st: 'racing' }).then(function (rnd) {
+      var d = { players: pl, tier: r.tier, lvl: r.lvl, trk: r.trk, wet: r.wet, rnd: rnd };
       mpSend('start', d); mpBegin(d);
     }, function (e) { MP.err = mpErr(e); mpDraw(false); });
   }

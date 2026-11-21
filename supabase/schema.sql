@@ -338,3 +338,32 @@ language sql security definer set search_path = public as $$
   join public.mp_profiles p on p.id = r.host
   where m.uid = auth.uid() and not m.joined and r.created > now() - interval '2 hours';
 $$;
+
+-- Part 4: race counter, so a player who missed the live "start" message (phone in the background) still joins the race.
+alter table public.mp_rooms add column if not exists rnd int not null default 0;
+
+drop function if exists public.mp_room_status(uuid, text);
+create or replace function public.mp_room_status(rid uuid, st text) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  update public.mp_rooms set status = st, rnd = case when st = 'racing' then rnd + 1 else rnd end
+  where id = rid and host = auth.uid() and st in ('lobby', 'racing') returning rnd into n;
+  return n;
+end $$;
+revoke all on function public.mp_room_status(uuid, text) from public, anon;
+grant execute on function public.mp_room_status(uuid, text) to authenticated;
+
+create or replace function public.mp_room(rid uuid) returns json
+language plpgsql security definer set search_path = public as $$
+declare res json;
+begin
+  if not exists (select 1 from public.mp_members where room = rid and uid = auth.uid()) then return null; end if;
+  select json_build_object(
+    'id', r.id, 'tier', r.tier, 'lvl', r.lvl, 'trk', r.trk, 'wet', r.wet, 'status', r.status, 'host', r.host, 'rnd', r.rnd,
+    'code', case when r.host = auth.uid() then r.code else null end,
+    'members', (select coalesce(json_agg(json_build_object('uid', m.uid, 'name', p.username, 'joined', m.joined, 'host', m.uid = r.host) order by (m.uid = r.host) desc, p.username), '[]'::json)
+                from public.mp_members m join public.mp_profiles p on p.id = m.uid where m.room = r.id))
+  into res from public.mp_rooms r where r.id = rid;
+  return res;
+end $$;
