@@ -247,7 +247,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   var STATS = [['pace', 'Pace'], ['cons', 'Consistency'], ['wet', 'Wet driving'], ['tyre', 'Tyre care']];
 
   var s = null;                 // game state (saved)
-  var ui = { action: 'pace', strat: 'balanced', mode: 'drive', diff: 'medium', corners: 'medium', confirmReset: false, name: '' };
+  var ui = { levels: false, confirmTier: null, action: 'pace', strat: 'balanced', mode: 'drive', diff: 'medium', corners: 'medium', confirmReset: false, name: '' };
 
   /* ---------- helpers ---------- */
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -276,6 +276,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   }
 
   function tier() { return TIERS[s.tier]; }
+  function unlockedTier() { return Math.max(s.unlocked || 0, s.tier, 0); }   // highest level you may choose (older saves: your current level)
   function diff() { return DIFF[s && s.diff] || DIFF.medium; }
   function trainCost() { return 30 * tier().mult; }
 
@@ -434,6 +435,10 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     s.money += bonus;
     s.rep = clamp(s.rep + (pos === 1 ? 10 : pos <= 3 ? 5 : 0), 0, 100);
     s.result = { pos: pos, bonus: bonus, promote: pos <= 3 && s.tier < TIERS.length - 1, champion: pos === 1 };
+    if (pos <= 3) {   // a level is cleared by finishing its 10 races in the top three; that unlocks the next level
+      s.cleared = s.cleared || []; if (s.cleared.indexOf(s.tier) < 0) s.cleared.push(s.tier);
+      s.unlocked = Math.max(unlockedTier(), Math.min(TIERS.length - 1, s.tier + 1));
+    }
   }
 
   /* ---------- drivable race ---------- */
@@ -1332,6 +1337,19 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       '</div>';
   }
 
+  function levelsView() {
+    var un = unlockedTier(), cl = s.cleared || [];
+    var h = '<div class="card"><div class="head"><h2>Choose level</h2><span class="label">Finish a level in the top three to unlock the next</span></div><div class="opts" style="grid-template-columns:1fr">';
+    TIERS.forEach(function (q, i) {
+      var locked = i > un, cur = i === s.tier, done = cl.indexOf(i) >= 0;
+      var st = locked ? 'Locked. Finish ' + TIERS[i - 1].name + ' in the top three first.' : done ? 'Cleared' + (cur ? ', current level' : '') : cur ? 'Current level' : 'Unlocked';
+      var warn = ui.confirmTier === i && !locked && !cur;
+      h += '<div class="opt"><button class="offer" data-go="pick" data-i="' + i + '"' + (locked ? ' disabled' : '') + '><span class="t">' + (locked ? '&#128274; ' : done ? '&#10003; ' : '') + esc(q.name) + '</span><span class="d">' + (warn ? 'Tap again to leave this season and start ' + esc(q.name) : st) + ' &middot; 10 tracks</span></button></div>';
+    });
+    h += '</div><button class="btn secondary" data-go="levels">Back</button></div>';
+    return h;
+  }
+
   function offersView() {
     var t = tier();
     var h = '<div class="card"><h2 style="margin-bottom:6px">Season ' + s.season + ' team offers</h2><p class="mute">Pick your ' + esc(t.name) + ' team. A faster car helps every race. Better teams ask for more reputation (you have ' + Math.round(s.rep) + ').</p><div class="opts" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">';
@@ -1360,8 +1378,9 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     var padBtn = '<button class="btn ghost" data-go="pad">Gamepad</button>';
     if (!s) { hs.innerHTML = padBtn; app.innerHTML = startView(); return; }
     hs.innerHTML = '<span class="chip tier">' + esc(tier().name) + '</span><span class="chip">Season ' + s.season + '</span><span class="chip">Race ' + Math.min(s.race + (s.phase === 'prep' ? 1 : 0), s.calendar.length) + '/' + s.calendar.length + '</span>' +
-      padBtn + '<button class="btn ghost' + (ui.confirmReset ? ' warn' : '') + '" data-go="reset">' + (ui.confirmReset ? 'Confirm: delete career' : 'New career') + '</button>';
-    var main = s.phase === 'drive' ? driveView() : s.phase === 'offers' ? offersView() : s.phase === 'prep' ? prepView() : s.phase === 'result' ? resultView() : seasonView();
+      (s.phase === 'drive' ? '' : '<button class="btn ghost" data-go="levels">Levels</button>') + padBtn + '<button class="btn ghost' + (ui.confirmReset ? ' warn' : '') + '" data-go="reset">' + (ui.confirmReset ? 'Confirm: delete career' : 'New career') + '</button>';
+    if (s.phase === 'drive') ui.levels = false;
+    var main = ui.levels ? levelsView() : s.phase === 'drive' ? driveView() : s.phase === 'offers' ? offersView() : s.phase === 'prep' ? prepView() : s.phase === 'result' ? resultView() : seasonView();
     app.innerHTML = '<div class="grid"><div class="main">' + main + '</div><div class="side">' + driverCard() + standingsCard() + '</div></div>';
     if (s.phase === 'drive') {
       Game.start(document.getElementById('cv'));
@@ -1415,6 +1434,17 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     else if (g === 'driveSkip') { runWeekend(null, ui.strat, { sim: true }); }
     else if (g === 'next') { if (s.race < s.calendar.length) { setupWeekend(); save(); } }
     else if (g === 'season') { s.phase = 'season'; save(); }
+    else if (g === 'levels') { ui.levels = !ui.levels; ui.confirmTier = null; }
+    else if (g === 'pick') {
+      var ti = +b.getAttribute('data-i');
+      if (ti > unlockedTier()) return;
+      if (ti === s.tier) { ui.levels = false; ui.confirmTier = null; }
+      else {
+        var midSeason = (s.phase === 'prep' || s.phase === 'result') && s.race > 0;
+        if (midSeason && ui.confirmTier !== ti) { ui.confirmTier = ti; }
+        else { s.tier = ti; s.season += 1; startSeason(false); ui.levels = false; ui.confirmTier = null; save(); }
+      }
+    }
     else if (g === 'promote') { s.tier += 1; s.season += 1; startSeason(true); save(); }
     else if (g === 'stay') { s.season += 1; startSeason(true); save(); }
     else if (g === 'reset') {
