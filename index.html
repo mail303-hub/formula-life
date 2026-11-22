@@ -251,7 +251,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     safe:     { label: 'Careful',  desc: 'Slower, but rarely makes mistakes.',                 mean: -3, sd: 3.5, crash: 0.015 }
   };
   var DIFF = {
-    easy:   { label: 'Easy',   r: -12, f: 0.66, desc: 'Slower rivals' },
+    easy:   { label: 'Easy',   r: -12, f: 0.66, sp: 0.2, desc: 'Slower rivals' },
     medium: { label: 'Medium', r: -2,  f: 0.79, desc: 'Balanced rivals' },
     hard:   { label: 'Hard',   r: 3,  f: 0.87, desc: 'Fast, tough rivals' }
   };
@@ -558,6 +558,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     var rated = s.drivers.map(function (d) { return { d: d, r: d.me ? pr + gauss() * 4 : d.rating + diff().r + (wet ? d.wetSkill : 0) + gauss() * 4 }; })
       .sort(function (a, b) { return b.r - a.r; });
     g.cars = [];
+    var nb = Math.max(1, rated.length - 1), spread = shuffle(rated.map(function (q, i) { return i / Math.max(1, nb - 1); })), bi = 0;   // rivals get evenly spread speeds (Easy: from very slow up to the old Easy pace) so they do not drive in a pack
     rated.forEach(function (o, slot) {
       var lane = (slot % 2 ? 1 : -1) * 10, back = (slot + 1) * GAP;
       if (o.d.me) {
@@ -565,7 +566,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
         g.p = { id: 'me', idx: idx, lap: -1, total: idx - M, v: 0, h: a, steer: 0, dist: 0,
           x: c[0] - Math.sin(a) * lane, y: c[1] + Math.cos(a) * lane, slot: slot };
       } else {
-        var cp = carParams(o.d.rating + diff().r + (wet ? o.d.wetSkill : 0), wet), fac = diff().f + gauss() * 0.02;
+        var cp = carParams(o.d.rating + diff().r + (wet ? o.d.wetSkill : 0), wet), fac = diff().f - (diff().sp || 0) * spread[bi++ % spread.length] + gauss() * 0.02;
         g.cars.push({ id: o.d.id, name: o.d.name, s: -back, v: 0, lane: ((slot % 3) - 1) * 9, fac: fac, acc: cp.vmax / 3.5,
           prof: profile(g.tk, cp.vmax, cp.aLat), time: null, slot: slot });
       }
