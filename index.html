@@ -292,8 +292,29 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
   (function () { try { var o = JSON.parse(localStorage.getItem(UIK) || 'null'); if (o) { if (DIFF[o.diff]) ui.diff = o.diff; if (CORNERS[o.corners]) ui.corners = o.corners; if (o.quickLvl >= 1 && o.quickLvl <= 10) ui.quickLvl = o.quickLvl | 0; if (typeof o.user === 'string') ui.home.user = o.user.slice(0, 16); } } catch (e) {} })();
   /* quick race progress (guests, accounts and room players alike): kept in this browser, same levels as the career */
   var QPK = 'formula-life-qp', QP = { tier: 0, lvl: 1, unlocked: 0, prog: {}, points: 0, money: 0 };
+  Object.defineProperty(QP, 'syncing', { value: false, writable: true, enumerable: false });
   (function () { try { var o = JSON.parse(localStorage.getItem(QPK) || 'null'); if (o && typeof o === 'object') { QP.tier = clamp(o.tier | 0, 0, TIERS.length - 1); QP.unlocked = clamp(o.unlocked | 0, 0, TIERS.length - 1); QP.prog = o.prog && typeof o.prog === 'object' ? o.prog : {}; QP.lvl = clamp(o.lvl | 0 || 1, 1, 10); QP.points = Math.max(0, +o.points || 0); QP.money = Math.max(0, +o.money || 0); } } catch (e) {} })();
-  function qpSave() { try { localStorage.setItem(QPK, JSON.stringify(QP)); } catch (e) {} }
+  var qpTimer = 0;
+  function qpSave() { try { localStorage.setItem(QPK, JSON.stringify(QP)); } catch (e) {} if (qpTimer) clearTimeout(qpTimer); qpTimer = setTimeout(function () { qpTimer = 0; qpSync(); }, 500); }
+  function qpCleared(o) { var n = 0; for (var i = 0; i < 6; i++) n += clamp(+(o && o.prog && o.prog[i]) || 0, 0, 10); return n; }
+  // registered accounts keep the same progress on the server: merge (highest wins), adopt the result, and show it on the leaderboard
+  function qpSync() {
+    if (!MP.sb || !MP.user || !MP.name || mpGuest() || QP.syncing) return Promise.resolve();
+    QP.syncing = true;
+    var before = qpCleared(QP);
+    return rpc('mp_progress_save', { p: { tier: QP.tier, lvl: QP.lvl, unlocked: QP.unlocked, prog: QP.prog, points: QP.points, money: Math.round(QP.money) } }).then(function (d) {
+      QP.syncing = false;
+      if (!d) return;
+      var adopt = qpCleared(d) > before;
+      QP.unlocked = clamp(d.unlocked | 0, 0, TIERS.length - 1);
+      QP.prog = d.prog && typeof d.prog === 'object' ? d.prog : {};
+      QP.points = Math.max(QP.points, +d.points || 0); QP.money = Math.max(QP.money, +d.money || 0);
+      if (adopt) { QP.tier = clamp(d.tier | 0, 0, TIERS.length - 1); QP.lvl = clamp(d.lvl | 0 || 1, 1, 10); }
+      QP.tier = Math.min(QP.tier, QP.unlocked); QP.lvl = Math.min(QP.lvl, qpProg(QP.tier) + 1);
+      try { localStorage.setItem(QPK, JSON.stringify(QP)); } catch (e) {}
+      if (!ui.temp && (ui.screen === 'home' || ui.screen === 'settings') && !document.activeElement.matches('input')) render();
+    }, function () { QP.syncing = false; });
+  }
   function qpProg(i) { return clamp(+QP.prog[i] || 0, 0, 10); }
   QP.tier = Math.min(QP.tier, QP.unlocked); QP.lvl = Math.min(QP.lvl, qpProg(QP.tier) + 1);
   function load() { try { var r = localStorage.getItem(KEY); if (r) { var o = JSON.parse(r); if (o && o.phase) return o; } } catch (e) {} return null; }
@@ -1538,7 +1559,8 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
       app.innerHTML = driveView(); Game.start(document.getElementById('cv')); touchGate(); return;
     }
     if (ui.screen === 'settings') { hs.innerHTML = ''; app.innerHTML = settingsView(); return; }
-    if (ui.screen !== 'career') { hs.innerHTML = gear; app.innerHTML = homeView(); return; }
+    if (ui.screen === 'board') { hs.innerHTML = ''; app.innerHTML = boardView(); return; }
+    if (ui.screen !== 'career') { hs.innerHTML = '<button class="btn ghost" data-go="board">Leaderboard</button>' + gear; app.innerHTML = homeView(); return; }
     if (!s) { hs.innerHTML = homeBtn + gear; app.innerHTML = startView(); return; }
     hs.innerHTML = '<span class="chip tier">' + esc(tier().name) + '</span><span class="chip">Season ' + s.season + '</span><span class="chip">Race ' + Math.min(s.race + (s.phase === 'prep' ? 1 : 0), s.calendar.length) + '/' + s.calendar.length + '</span>' +
       (s.phase === 'drive' ? '' : '<button class="btn ghost" data-go="levels">Levels</button>') + homeBtn + gear + '<button class="btn ghost' + (ui.confirmReset ? ' warn' : '') + '" data-go="reset">' + (ui.confirmReset ? 'Confirm: delete career' : 'New career') + '</button>';
@@ -1573,6 +1595,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     var g = b.getAttribute('data-go');
     if (g !== 'reset') ui.confirmReset = false;
     if (g === 'settings') { ui.screen = 'settings'; }
+    else if (g === 'board') { ui.screen = 'board'; ui.board = { rows: null, err: '' }; boardLoad(); }
     else if (g === 'home') { ui.screen = 'home'; }
     else if (g === 'career') { ui.screen = 'career'; }
     else if (g === 'homePlay') { homePlay(); return; }
@@ -1612,7 +1635,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
         if (podium && ql === qpProg(qt) + 1) {
           cleared = true; QP.prog[qt] = ql;
           if (ql < 10) QP.lvl = ql + 1;
-          else if (qt < TIERS.length - 1 && QP.unlocked < qt + 1) { QP.unlocked = qt + 1; unlockedName = TIERS[qt + 1].name; }
+          else if (qt < TIERS.length - 1) { if (QP.unlocked < qt + 1) QP.unlocked = qt + 1; unlockedName = TIERS[qt + 1].name; QP.tier = qt + 1; QP.lvl = Math.min(qpProg(qt + 1) + 1, 10); }
           qpSave();
         }
         ui.quick = { pts: qpts, prize: qprize, pos: Game.pos, time: Game.finishT, rows: qrows, podium: podium, cleared: cleared, lvl: ql, tier: qt, unlocked: unlockedName }; s.phase = 'quickdone';
@@ -1890,6 +1913,27 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
       '<p style="margin-top:12px"><button class="btn" id="hm-go" data-go="homePlay">Play</button></p>' +
       '<p class="mute" style="font-size:.85rem">A new username with a password makes your account. The same username and password signs you in. No password means guest. Friends, career and other options are behind Settings.</p></div>';
   }
+  function boardLoad() {
+    var b = ui.board;
+    mpConnect(function (err) {
+      if (err) { b.err = err; if (ui.screen === 'board') render(); return; }
+      var run = function () { rpc('mp_leaderboard').then(function (d) { b.rows = d || []; if (ui.screen === 'board') render(); }, function (e) { b.err = mpErr(e); if (ui.screen === 'board') render(); }); };
+      if (MP.user && MP.name && !mpGuest() && !QP.syncing) qpSync().then(run, run); else run();
+    });
+  }
+  function boardView() {
+    var b = ui.board || { rows: null, err: '' }, me = (MP.name || '').toLowerCase(), body;
+    if (b.err) body = '<p class="bad">' + esc(b.err) + '</p>';
+    else if (!b.rows) body = '<p class="mute">Loading...</p>';
+    else if (!b.rows.length) body = '<p class="mute">No results yet. Sign in with a password and clear a track to appear here.</p>';
+    else body = '<div class="mprows">' + b.rows.map(function (r, i) {
+      var u = clamp(r.unlocked | 0, 0, TIERS.length - 1), n = clamp(+(r.prog && r.prog[u]) || 0, 0, 10);
+      var lv = TIERS[u].name + ', ' + (n >= 10 && u === TIERS.length - 1 ? 'all tracks' : n + '/10 tracks');
+      return '<div class="mprow' + (r.username.toLowerCase() === me ? ' me' : '') + '"><span>' + (i + 1) + '. ' + esc(r.username) + '</span><span class="mute">' + esc(lv) + ' | ' + (r.points | 0) + ' pts</span></div>';
+    }).join('') + '</div>';
+    return '<div class="card start"><div class="head"><h2>Leaderboard</h2><button class="btn ghost" data-go="home">Back</button></div>' +
+      '<p class="mute">Players with an account (name and password). Ranked by cleared tracks, then points. Guests are not listed.</p>' + body + '</div>';
+  }
   function settingsView() {
     var who = MP.user && MP.name ? '<p>Signed in as <b>' + esc(MP.name) + '</b>' + (mpGuest() ? ' <span class="chip">guest</span>' : '') + ' <button class="btn ghost" data-mp="signout">' + (mpGuest() ? 'Leave' : 'Sign out') + '</button></p>' : '<p class="mute">Not signed in. Sign in on the home screen.</p>';
     return '<div class="card start"><div class="head"><h2>Settings</h2><button class="btn ghost" data-go="home">Back</button></div>' + who +
@@ -1946,13 +1990,13 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
         for (var q = 0; q < 3; q++) list.push(base + Math.floor(Math.random() * 900 + 100));
         rpc('mp_free_names', { names: list }).then(function (free) {
           var isFree = free.indexOf(un) >= 0;
-          var named = function (user) { MP.user = user; try { localStorage.setItem(MPK, '1'); } catch (e) {} return rpc('mp_set_username', { u: un }).then(function () { MP.name = un; mpStartTimers(); cb(null); }); };
+          var named = function (user) { MP.user = user; try { localStorage.setItem(MPK, '1'); } catch (e) {} return rpc('mp_set_username', { u: un }).then(function () { MP.name = un; mpStartTimers(); qpSync(); cb(null); }); };
           if (pw) {
             if (isFree) return MP.sb.auth.signUp({ email: mpEmail(un), password: pw }).then(function (r) { if (r.error) throw r.error; if (!r.data.session) throw 'Online accounts need email confirmation, which is switched on by mistake.'; return named(r.data.user); }).catch(fail);
             return MP.sb.auth.signInWithPassword({ email: mpEmail(un), password: pw }).then(function (r) {
               if (r.error) throw (/invalid login/i.test(r.error.message) ? 'That name is taken, or the password is wrong.' : r.error);
               MP.user = r.data.user; try { localStorage.setItem(MPK, '1'); } catch (e) {}
-              return new Promise(function (ok) { mpLoadProfile(ok); }).then(function () { if (!MP.name) throw 'This account has no username yet.'; mpStartTimers(); cb(null); });
+              return new Promise(function (ok) { mpLoadProfile(ok); }).then(function () { if (!MP.name) throw 'This account has no username yet.'; mpStartTimers(); qpSync(); cb(null); });
             }).catch(fail);
           }
           if (!isFree) { homeErr('That name is taken. Pick a free one, or type the password if it is yours.', free.slice(0, 4)); return cb(null, true); }
@@ -2126,7 +2170,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
   }
   try {
     if (mpOnline() && (inviteCode || localStorage.getItem(MPK) === '1')) mpConnect(function () {
-      if (MP.user && MP.name) { mpStartTimers(); var hu = document.getElementById('hm-user'); if (hu && !hu.value) { hu.value = MP.name; ui.home.user = MP.name; } }
+      if (MP.user && MP.name) { mpStartTimers(); qpSync(); var hu = document.getElementById('hm-user'); if (hu && !hu.value) { hu.value = MP.name; ui.home.user = MP.name; } }
     });
   } catch (e) {}
 })();

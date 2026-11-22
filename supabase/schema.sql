@@ -367,3 +367,60 @@ begin
   into res from public.mp_rooms r where r.id = rid;
   return res;
 end $$;
+
+-- Formula Life, part 3: quick-race progress per account and the leaderboard.
+create table if not exists public.mp_progress (
+  id uuid primary key references auth.users(id) on delete cascade,
+  tier int not null default 0,
+  lvl int not null default 1,
+  unlocked int not null default 0,
+  prog jsonb not null default '{}'::jsonb,
+  cleared int not null default 0,
+  points int not null default 0,
+  money bigint not null default 0,
+  updated timestamptz not null default now()
+);
+alter table public.mp_progress enable row level security;
+
+-- merge: the highest value wins, so progress never goes backwards and works from several devices
+create or replace function public.mp_progress_save(p jsonb) returns json
+language plpgsql security definer set search_path = public as $$
+declare old public.mp_progress; k text; v numeric; np jsonb; ncl int := 0; nun int; npts int; nmon bigint; ntier int; nlvl int; r public.mp_progress;
+begin
+  if auth.uid() is null or public.mp_is_guest() then return null; end if;
+  if not exists (select 1 from public.mp_profiles where id = auth.uid()) then return null; end if;
+  select * into old from public.mp_progress where id = auth.uid();
+  np := coalesce(old.prog, '{}'::jsonb);
+  for k, v in select key, case when jsonb_typeof(value) = 'number' then (value #>> '{}')::numeric else 0 end
+              from jsonb_each(coalesce(p -> 'prog', '{}'::jsonb)) where key ~ '^[0-5]$' loop
+    np := jsonb_set(np, array[k], to_jsonb(greatest(coalesce((np ->> k)::int, 0), least(10, greatest(0, floor(v)::int)))));
+  end loop;
+  for k in select key from jsonb_each(np) loop ncl := ncl + coalesce((np ->> k)::int, 0); end loop;
+  nun := least(5, greatest(0, coalesce(old.unlocked, 0), coalesce(floor((p ->> 'unlocked')::numeric)::int, 0)));
+  npts := least(1000000000, greatest(coalesce(old.points, 0), coalesce(floor((p ->> 'points')::numeric)::int, 0)));
+  nmon := least(1000000000000::bigint, greatest(coalesce(old.money, 0), coalesce(floor((p ->> 'money')::numeric)::bigint, 0)));
+  if old.id is null or ncl >= old.cleared then
+    ntier := least(5, greatest(0, coalesce(floor((p ->> 'tier')::numeric)::int, 0)));
+    nlvl := least(10, greatest(1, coalesce(floor((p ->> 'lvl')::numeric)::int, 1)));
+  else
+    ntier := old.tier; nlvl := old.lvl;
+  end if;
+  insert into public.mp_progress (id, tier, lvl, unlocked, prog, cleared, points, money, updated)
+    values (auth.uid(), ntier, nlvl, nun, np, ncl, npts, nmon, now())
+    on conflict (id) do update set tier = excluded.tier, lvl = excluded.lvl, unlocked = excluded.unlocked, prog = excluded.prog,
+      cleared = excluded.cleared, points = excluded.points, money = excluded.money, updated = now()
+    returning * into r;
+  return json_build_object('tier', r.tier, 'lvl', r.lvl, 'unlocked', r.unlocked, 'prog', r.prog, 'points', r.points, 'money', r.money);
+end $$;
+
+create or replace function public.mp_leaderboard() returns table (username text, unlocked int, prog jsonb, cleared int, points int, money bigint)
+language sql stable security definer set search_path = public as $$
+  select pr.username, g.unlocked, g.prog, g.cleared, g.points, g.money
+  from public.mp_progress g join public.mp_profiles pr on pr.id = g.id
+  order by g.cleared desc, g.points desc, pr.username
+  limit 50;
+$$;
+
+revoke all on function public.mp_progress_save(jsonb), public.mp_leaderboard() from public, anon;
+grant execute on function public.mp_progress_save(jsonb) to authenticated;
+grant execute on function public.mp_leaderboard() to anon, authenticated;
