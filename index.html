@@ -67,6 +67,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 .btn:hover { filter: brightness(1.08); }
 .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); padding: 6px 12px; font-size: .9rem; letter-spacing: .04em; }
 .btn.ghost.warn { border-color: var(--bad); color: var(--bad); }
+.cleared { margin: 12px 0; padding: 12px 14px; border: 2px solid var(--accent); border-radius: 6px; background: var(--hi); }
 .qgrid { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
 .qgrid .btn { padding: 6px 12px; font-size: .9rem; }
 .qgrid .btn:disabled { opacity: .45; cursor: not-allowed; }
@@ -442,9 +443,9 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       s.prog[s.tier] = tr.lvl;
       if (tr.lvl >= 10) {
         s.cleared = s.cleared || []; if (s.cleared.indexOf(s.tier) < 0) s.cleared.push(s.tier);
-        if (s.tier < TIERS.length - 1) { s.unlocked = Math.max(unlockedTier(), s.tier + 1); lvlNote = { t: 'Track difficulty 10 cleared! You finished ' + tier().name + ' and ' + TIERS[s.tier + 1].name + ' is unlocked.', c: 'good' }; }
+        if (s.tier < TIERS.length - 1) { s.unlocked = Math.max(unlockedTier(), s.tier + 1); lvlNote = { t: 'Level complete! You finished ' + tier().name + ' and ' + TIERS[s.tier + 1].name + ' is now open.', c: 'good' }; }
         else lvlNote = { t: 'Track difficulty 10 cleared! You finished Formula 1.', c: 'good' };
-      } else lvlNote = { t: 'Track difficulty ' + tr.lvl + ' cleared! Difficulty ' + (tr.lvl + 1) + ' is unlocked.', c: 'good' };
+      } else lvlNote = { t: 'Track complete! Track ' + tr.lvl + ' is cleared and track ' + (tr.lvl + 1) + ' is now open.', c: 'good' };
     } else if (!mine.dnf && mine.pos > needPos(tr.lvl) && tr.lvl === progLvl() + 1) lvlNote = { t: 'To clear difficulty ' + tr.lvl + ' and unlock the next one, ' + needTxt(tr.lvl) + '. Try this track again.' };
     else if (mine.dnf && tr.lvl === progLvl() + 1) lvlNote = { t: 'You did not finish. To clear difficulty ' + tr.lvl + ', ' + needTxt(tr.lvl) + '.' };
     if (driven && driven.order) notes.push({ t: 'You drove this race yourself.' });
@@ -1892,7 +1893,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   }
   function quickResultView() {
     var q = ui.quick || { pos: 0, time: 0, rows: [] };
-    var note = q.cleared ? '<p class="good">Well done! Difficulty ' + q.lvl + ' of ' + esc(TIERS[q.tier].name) + ' cleared.' + (q.lvl < 10 ? ' The next track is open.' : '') + (q.unlocked ? ' New level unlocked: ' + esc(q.unlocked) + '.' : '') + '</p>' : q.podium ? '<p class="mute">Good finish. Nothing new to unlock here.</p>' : '<p class="mute">To clear this track and open the next one, ' + needTxt(q.lvl) + '.</p>';
+    var note = q.cleared ? '<div class="cleared"><b>' + (q.unlocked ? 'Level complete!' : 'Track complete!') + '</b> ' + (q.unlocked ? esc(TIERS[q.tier].name) + ' is done. <b>' + esc(q.unlocked) + '</b> is now open.' : 'Track ' + q.lvl + ' of ' + esc(TIERS[q.tier].name) + ' is cleared. <b>Track ' + (q.lvl + 1) + ' is now open.</b>') + '</div>' : q.podium ? '<p class="mute">Good finish. Nothing new to unlock here.</p>' : '<p class="mute">To clear this track and open the next one, ' + needTxt(q.lvl) + '.</p>';
     var btns = (q.cleared && q.unlocked ? '<button class="btn" data-go="quickNext">Start ' + esc(q.unlocked) + '</button> <button class="btn ghost" data-go="quickAgain">Race this track again</button> ' : q.cleared && q.lvl < 10 ? '<button class="btn" data-go="quickAgain">Next track: ' + esc(TRACKS[q.lvl % TRACKS.length].name) + ' (' + (q.lvl + 1) + ' of 10)</button> ' : q.podium ? '<button class="btn" data-go="quickAgain">Race again</button> ' : '<button class="btn" data-go="quickAgain">Try this track again</button> ');
     return '<div class="card start"><h2>Quick race result</h2><div class="big">' + ord(q.pos) + '</div><p class="mono">' + fmt(q.time) + '</p>' + note + '<p style="margin:12px 0">' + btns + '<button class="btn ghost" data-go="quickExit">Home</button></p><div class="mprows">' +
       q.rows.map(function (r, i) { return '<div class="mprow' + (r.me ? ' me' : '') + '"><span>' + (i + 1) + '. ' + esc(r.name) + '</span></div>'; }).join('') +
