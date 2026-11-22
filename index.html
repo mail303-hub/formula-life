@@ -67,7 +67,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 .btn:hover { filter: brightness(1.08); }
 .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); padding: 6px 12px; font-size: .9rem; letter-spacing: .04em; }
 .btn.ghost.warn { border-color: var(--bad); color: var(--bad); }
-.btn.gear { font-size: 1.35rem; line-height: 1; padding: 4px 12px; }
+.qgrid { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+.qgrid .btn { padding: 6px 12px; font-size: .9rem; }
+.qgrid .btn:disabled { opacity: .45; cursor: not-allowed; }
 .start select { font: inherit; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 4px; }
 .btn.secondary { background: transparent; color: var(--ink); border: 2px solid var(--ink); }
 
@@ -282,6 +284,12 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   var UIK = 'formula-life-ui';
   function saveUI() { try { localStorage.setItem(UIK, JSON.stringify({ diff: ui.diff, corners: ui.corners, quickLvl: ui.quickLvl, user: ui.home.user })); } catch (e) {} }
   (function () { try { var o = JSON.parse(localStorage.getItem(UIK) || 'null'); if (o) { if (DIFF[o.diff]) ui.diff = o.diff; if (CORNERS[o.corners]) ui.corners = o.corners; if (o.quickLvl >= 1 && o.quickLvl <= 10) ui.quickLvl = o.quickLvl | 0; if (typeof o.user === 'string') ui.home.user = o.user.slice(0, 16); } } catch (e) {} })();
+  /* quick race progress (guests, accounts and room players alike): kept in this browser, same levels as the career */
+  var QPK = 'formula-life-qp', QP = { tier: 0, lvl: 1, unlocked: 0, prog: {} };
+  (function () { try { var o = JSON.parse(localStorage.getItem(QPK) || 'null'); if (o && typeof o === 'object') { QP.tier = clamp(o.tier | 0, 0, TIERS.length - 1); QP.unlocked = clamp(o.unlocked | 0, 0, TIERS.length - 1); QP.prog = o.prog && typeof o.prog === 'object' ? o.prog : {}; QP.lvl = clamp(o.lvl | 0 || 1, 1, 10); } } catch (e) {} })();
+  function qpSave() { try { localStorage.setItem(QPK, JSON.stringify(QP)); } catch (e) {} }
+  function qpProg(i) { return clamp(+QP.prog[i] || 0, 0, 10); }
+  QP.tier = Math.min(QP.tier, QP.unlocked); QP.lvl = Math.min(QP.lvl, qpProg(QP.tier) + 1);
   function load() { try { var r = localStorage.getItem(KEY); if (r) { var o = JSON.parse(r); if (o && o.phase) return o; } } catch (e) {} return null; }
   /* ---------- gamepad mapping (saved in the browser) ---------- */
   var PAD_KEY = 'formula-life-pad';
@@ -1491,7 +1499,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     if (Game.on) Game.stop();
     document.body.style.overflow = '';
     if (document.fullscreenElement && document.exitFullscreen) { try { var fr = document.exitFullscreen(); if (fr && fr.catch) fr.catch(function () {}); } catch (e) {} }
-    var gear = '<button class="btn ghost gear" data-go="settings" aria-label="Settings" title="Settings">&#9881;</button>', homeBtn = '<button class="btn ghost" data-go="home">Home</button>';
+    var gear = '<button class="btn ghost" data-go="settings">Settings</button>', homeBtn = '<button class="btn ghost" data-go="home">Home</button>';
     if (ui.screen === 'friends') { hs.innerHTML = ''; app.innerHTML = friendsView(); mpDraw(true); return; }
     if (ui.screen === 'mprace' && MP.race) {
       hs.innerHTML = ''; app.innerHTML = mpRaceView();
@@ -1525,7 +1533,6 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     if (el.name === 'action') { ui.action = el.value; render(); var n = document.getElementById('action-' + el.value); if (n) n.focus(); }
     if (el.name === 'corners') { ui.corners = el.value; if (s) { s.corners = el.value; save(); } saveUI(); render(); var cc = document.getElementById('corners-' + el.value); if (cc) cc.focus(); }
     else if (el.name === 'diff') { ui.diff = el.value; if (s) { s.diff = el.value; save(); } saveUI(); render(); var dd = document.getElementById('diff-' + el.value); if (dd) dd.focus(); }
-    if (el.id === 'quicklvl') { ui.quickLvl = +el.value; saveUI(); }
     if (el.name === 'mode') { ui.mode = el.value; render(); var q = document.getElementById('mode-' + el.value); if (q) q.focus(); }
     if (el.name === 'strat') { ui.strat = el.value; render(); var m = document.getElementById('strat-' + el.value); if (m) m.focus(); }
   });
@@ -1546,6 +1553,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     else if (g === 'career') { ui.screen = 'career'; }
     else if (g === 'homePlay') { homePlay(); return; }
     else if (g === 'homePick') { var hu = document.getElementById('hm-user'); ui.home.user = b.getAttribute('data-name'); if (hu) hu.value = ui.home.user; ui.homeSugg = []; ui.homeErr = ''; var hg = document.getElementById('hm-sugg'); if (hg) hg.innerHTML = ''; var he = document.getElementById('hm-err'); if (he) he.textContent = ''; return; }
+    else if (g === 'qtier') { var qi = +b.getAttribute('data-i'); if (qi >= 0 && qi <= QP.unlocked) { QP.tier = qi; QP.lvl = Math.min(qpProg(qi) + 1, 10); qpSave(); } }
+    else if (g === 'qlvl') { var qn = +b.getAttribute('data-i'); if (qn >= 1 && qn <= qpProg(QP.tier) + 1) { QP.lvl = qn; qpSave(); } }
     else if (g === 'quickAgain') { quickRace(s && s.name); return; }
     else if (g === 'quickExit') { quickExit(); return; }
     else if (g === 'start') { newCareer(ui.name.trim()); save(); }
@@ -1572,7 +1581,14 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     else if (g === 'driveDone') {
       if (ui.temp) {
         var qrows = (Game.order || []).map(function (id) { var d = s.drivers.filter(function (x) { return x.id === id; })[0]; return { name: d ? d.name : '?', me: id === 'me' }; });
-        ui.quick = { pos: Game.pos, time: Game.finishT, rows: qrows }; s.phase = 'quickdone';
+        var qt = QP.tier, ql = QP.lvl, cleared = false, unlockedName = '', podium = Game.pos <= 3;
+        if (podium && ql === qpProg(qt) + 1) {
+          cleared = true; QP.prog[qt] = ql;
+          if (ql < 10) QP.lvl = ql + 1;
+          else if (qt < TIERS.length - 1 && QP.unlocked < qt + 1) { QP.unlocked = qt + 1; unlockedName = TIERS[qt + 1].name; }
+          qpSave();
+        }
+        ui.quick = { pos: Game.pos, time: Game.finishT, rows: qrows, podium: podium, cleared: cleared, lvl: ql, tier: qt, unlocked: unlockedName }; s.phase = 'quickdone';
       } else runWeekend(null, null, { order: Game.order || [] });
     }
     else if (g === 'driveSkip') { runWeekend(null, ui.strat, { sim: true }); }
@@ -1843,30 +1859,36 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       '<label class="label" for="hm-pass">Password (optional)</label><p><input id="hm-pass" type="password" autocomplete="current-password" placeholder="Empty = play as a guest"></p>' +
       '<label class="label" for="hm-code">Room code (optional)</label><p><input id="hm-code" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="6 letters or numbers" style="text-transform:uppercase" value="' + esc(ui.home.code) + '"></p>' +
       '<div id="hm-err" class="bad">' + esc(ui.homeErr) + '</div>' +
+      '<p class="mute" style="margin-top:8px">Quick race: ' + esc(TIERS[QP.tier].name) + ', track ' + QP.lvl + ' of 10 (progress is saved in this browser)</p>' +
       '<p style="margin-top:12px"><button class="btn" id="hm-go" data-go="homePlay">Play</button></p>' +
-      '<p class="mute" style="font-size:.85rem">A new username with a password makes your account. The same username and password signs you in. No password means guest. Friends, career and other options are behind the gear.</p></div>';
+      '<p class="mute" style="font-size:.85rem">A new username with a password makes your account. The same username and password signs you in. No password means guest. Friends, career and other options are behind Settings.</p></div>';
   }
   function settingsView() {
     var who = MP.user && MP.name ? '<p>Signed in as <b>' + esc(MP.name) + '</b>' + (mpGuest() ? ' <span class="chip">guest</span>' : '') + ' <button class="btn ghost" data-mp="signout">' + (mpGuest() ? 'Leave' : 'Sign out') + '</button></p>' : '<p class="mute">Not signed in. Sign in on the home screen.</p>';
     return '<div class="card start"><div class="head"><h2>Settings</h2><button class="btn ghost" data-go="home">Back</button></div>' + who +
       '<p class="label">Opponents</p><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">' + Object.keys(DIFF).map(function (k) { return opt('diff', k, ui.diff === k, DIFF[k].label, DIFF[k].desc, false); }).join('') + '</div>' +
       '<p class="label">Corners</p><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">' + Object.keys(CORNERS).map(function (k) { return opt('corners', k, ui.corners === k, CORNERS[k].label, CORNERS[k].desc, false); }).join('') + '</div>' +
-      '<p class="label">Quick race track difficulty</p><p><select id="quicklvl">' + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (n) { return '<option value="' + n + '"' + (ui.quickLvl === n ? ' selected' : '') + '>' + n + ' of 10' + (n === 1 ? ' (easiest)' : n === 10 ? ' (hardest)' : '') + '</option>'; }).join('') + '</select></p>' +
+      '<p class="label">Quick race level</p><div class="qgrid">' + TIERS.map(function (q, i) { var lock = i > QP.unlocked; return '<button class="btn ' + (i === QP.tier ? '' : 'ghost') + '" data-go="qtier" data-i="' + i + '"' + (lock ? ' disabled' : '') + '>' + (lock ? '&#128274; ' : '') + esc(q.name) + '</button>'; }).join('') + '</div>' +
+      '<p class="label">Quick race track difficulty (clear one on the podium to open the next)</p><div class="qgrid">' + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (n) { var lock = n > qpProg(QP.tier) + 1; return '<button class="btn ' + (n === QP.lvl ? '' : 'ghost') + '" data-go="qlvl" data-i="' + n + '"' + (lock ? ' disabled' : '') + '>' + (lock ? '&#128274; ' : qpProg(QP.tier) >= n ? '&#10003; ' : '') + n + '</button>'; }).join('') + '</div>' +
       '<p style="margin-top:14px"><button class="btn" data-mp="open">Friends and rooms</button> <button class="btn secondary" data-go="career">Career</button> <button class="btn ghost" data-go="pad">Gamepad setup</button></p></div>';
   }
   function quickResultView() {
     var q = ui.quick || { pos: 0, time: 0, rows: [] };
-    return '<div class="card start"><h2>Quick race result</h2><div class="big">' + ord(q.pos) + '</div><p class="mono">' + fmt(q.time) + '</p><div class="mprows">' +
+    var note = q.cleared ? '<p class="good">Podium! Difficulty ' + q.lvl + ' of ' + esc(TIERS[q.tier].name) + ' cleared.' + (q.lvl < 10 ? ' The next track is open.' : '') + (q.unlocked ? ' New level unlocked: ' + esc(q.unlocked) + '.' : '') + '</p>' : q.podium ? '<p class="mute">Podium again. Nothing new to unlock here.</p>' : '<p class="mute">Finish in the top 3 to clear this track and open the next one.</p>';
+    return '<div class="card start"><h2>Quick race result</h2><div class="big">' + ord(q.pos) + '</div><p class="mono">' + fmt(q.time) + '</p>' + note + '<div class="mprows">' +
       q.rows.map(function (r, i) { return '<div class="mprow' + (r.me ? ' me' : '') + '"><span>' + (i + 1) + '. ' + esc(r.name) + '</span></div>'; }).join('') +
-      '</div><p style="margin-top:14px"><button class="btn" data-go="quickAgain">Race again</button> <button class="btn ghost" data-go="quickExit">Home</button></p></div>';
+      '</div><p style="margin-top:14px"><button class="btn" data-go="quickAgain">' + (q.cleared && q.lvl < 10 ? 'Next track' : 'Race again') + '</button> <button class="btn ghost" data-go="quickExit">Home</button></p></div>';
   }
   function quickRace(name) {   // a throw-away state: your saved career is not touched
     if (!ui.temp) ui.stash = s;
     ui.temp = true;
     newCareer(name || 'You');
-    s.team = { name: 'Your team', car: 52 };
-    s.cur = clamp(ui.quickLvl || 1, 1, 10) - 1;
-    var q = TRACKS[s.cur % TRACKS.length];
+    s.tier = QP.tier; startSeason(false);   // rivals of the chosen level
+    var up = TIERS[QP.tier].base - 39;      // your skills and car grow with the level, like a career would
+    STATS.forEach(function (k) { s.stats[k[0]] = clamp(45 + up, 0, 100); });
+    s.team = { name: 'Your team', car: 52 + Math.round(up / 2) };
+    s.cur = clamp(QP.lvl, 1, 10) - 1;
+    var q = TRACKS[(s.cur + QP.tier * 3) % TRACKS.length];
     s.calendar[s.cur] = { name: q.name, wet: false, lvl: s.cur + 1 };
     s.rain = 0; s.pending = { notes: [], spent: 0, earned: 0, wet: false }; s.phase = 'drive';
     ui.screen = 'quick'; ui.quick = null;
