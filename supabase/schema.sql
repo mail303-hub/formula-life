@@ -490,3 +490,62 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.mp_board(int, int, int) from public, anon;
 grant execute on function public.mp_board(int, int, int) to anon, authenticated;
+
+-- Part 5: recover a forgotten password by email.
+-- The auth email of every account starts as username@players.formula-life.game (cannot receive mail).
+-- Adding a real email replaces it (mp_email_set); signing in by username then needs mp_login_email,
+-- which only returns the email when the password is right. Reset links are sent by Supabase Auth
+-- (resetPasswordForEmail), which needs an SMTP server in Authentication > Emails > SMTP Settings.
+create table if not exists public.mp_login_try (uname text primary key, n int not null default 0, t timestamptz not null default now());
+alter table public.mp_login_try enable row level security;
+revoke all on public.mp_login_try from anon, authenticated;
+
+create or replace function public.mp_login_email(u text, p text) returns text
+language plpgsql security definer set search_path = public, extensions as $$
+declare un text := lower(trim(coalesce(u, ''))); em text; pw text; tr public.mp_login_try;
+begin
+  select * into tr from public.mp_login_try where uname = un;
+  if found and tr.n >= 8 and tr.t > now() - interval '10 minutes' then raise exception 'Too many tries. Wait a few minutes.'; end if;
+  select a.email, a.encrypted_password into em, pw from public.mp_profiles pr join auth.users a on a.id = pr.id
+    where lower(pr.username) = un and a.is_anonymous is not true;
+  if em is not null and pw is not null and pw <> '' and crypt(p, pw) = pw then
+    delete from public.mp_login_try where uname = un;
+    return em;
+  end if;
+  insert into public.mp_login_try (uname, n, t) values (un, 1, now())
+    on conflict (uname) do update set n = case when public.mp_login_try.t > now() - interval '10 minutes' then public.mp_login_try.n + 1 else 1 end, t = now();
+  return null;
+end $$;
+
+create or replace function public.mp_email_hint(u text) returns json
+language plpgsql stable security definer set search_path = public as $$
+declare em text; dom text;
+begin
+  select a.email into em from public.mp_profiles pr join auth.users a on a.id = pr.id
+    where lower(pr.username) = lower(trim(coalesce(u, ''))) and a.is_anonymous is not true;
+  if em is null then return json_build_object('state', 'noaccount'); end if;
+  if em like '%@players.formula-life.game' then return json_build_object('state', 'none'); end if;
+  dom := split_part(em, '@', 2);
+  return json_build_object('state', 'set', 'hint', left(em, 1) || '***@' || left(dom, 1) || '***' || coalesce(substring(dom from '\.[^.]+$'), ''));
+end $$;
+
+create or replace function public.mp_email_get() returns text
+language sql stable security definer set search_path = public as $$
+  select case when a.email like '%@players.formula-life.game' then null else a.email end from auth.users a where a.id = auth.uid();
+$$;
+
+create or replace function public.mp_email_set(e text) returns void
+language plpgsql security definer set search_path = public as $$
+declare em text := lower(trim(coalesce(e, '')));
+begin
+  if auth.uid() is null or public.mp_is_guest() or not exists (select 1 from public.mp_profiles where id = auth.uid()) then raise exception 'Sign in with your password first'; end if;
+  if length(em) > 254 or em !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]{2,}$' then raise exception 'That email address does not look right'; end if;
+  if em like '%@players.formula-life.game' then raise exception 'That email address does not look right'; end if;
+  if exists (select 1 from auth.users where lower(email) = em and id <> auth.uid()) then raise exception 'That email is already used by another account'; end if;
+  update auth.users set email = em, email_confirmed_at = coalesce(email_confirmed_at, now()), updated_at = now() where id = auth.uid();
+  update auth.identities set identity_data = jsonb_set(identity_data, '{email}', to_jsonb(em)) where user_id = auth.uid() and provider = 'email';
+end $$;
+
+revoke all on function public.mp_login_email(text, text), public.mp_email_hint(text), public.mp_email_get(), public.mp_email_set(text) from public, anon, authenticated;
+grant execute on function public.mp_login_email(text, text), public.mp_email_hint(text) to anon, authenticated;
+grant execute on function public.mp_email_get(), public.mp_email_set(text) to authenticated;

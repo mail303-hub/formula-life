@@ -276,7 +276,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
   var STATS = [['pace', 'Pace'], ['cons', 'Consistency'], ['wet', 'Wet driving'], ['tyre', 'Tyre care']];
 
   var s = null;                 // game state (saved)
-  var ui = { levels: false, confirmTier: null, action: 'pace', strat: 'balanced', mode: 'drive', diff: 'easy', corners: 'gentle', quickLvl: 1, screen: 'home', home: { user: '', code: '' }, homeErr: '', homeSugg: [], temp: false, stash: null, quick: null, confirmReset: false, name: '' };
+  var ui = { levels: false, confirmTier: null, action: 'pace', strat: 'balanced', mode: 'drive', diff: 'easy', corners: 'gentle', quickLvl: 1, screen: 'home', home: { user: '', code: '', email: '' }, homeErr: '', homeOk: '', fg: { user: '', email: '' }, homeSugg: [], temp: false, stash: null, quick: null, confirmReset: false, name: '' };
 
   /* ---------- helpers ---------- */
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -1566,6 +1566,8 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
       if (s.phase === 'quickdone') { app.innerHTML = quickResultView(); return; }
       app.innerHTML = driveView(); Game.start(document.getElementById('cv')); touchGate(); return;
     }
+    if (ui.screen === 'forgot') { hs.innerHTML = ''; app.innerHTML = forgotView(); return; }
+    if (ui.screen === 'newpass') { hs.innerHTML = ''; app.innerHTML = newpassView(); return; }
     if (ui.screen === 'settings') { hs.innerHTML = ''; app.innerHTML = settingsView(); return; }
     if (ui.screen === 'board') { hs.innerHTML = ''; app.innerHTML = boardView(); return; }
     if (ui.screen !== 'career') { hs.innerHTML = '<button class="btn ghost" data-go="board">Leaderboard</button>' + gear; app.innerHTML = homeView(); return; }
@@ -1595,6 +1597,9 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     if (id === 'name') ui.name = e.target.value;
     else if (id === 'hm-user') ui.home.user = e.target.value;
     else if (id === 'hm-code') ui.home.code = e.target.value.toUpperCase();
+    else if (id === 'hm-email') ui.home.email = e.target.value;
+    else if (id === 'fg-user') ui.fg.user = e.target.value;
+    else if (id === 'fg-email') ui.fg.email = e.target.value;
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.id && e.target.id.indexOf('hm-') === 0) { e.preventDefault(); homePlay(); } });
   document.addEventListener('click', function (e) {
@@ -1602,7 +1607,11 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     if (!b) return;
     var g = b.getAttribute('data-go');
     if (g !== 'reset') ui.confirmReset = false;
-    if (g === 'settings') { ui.screen = 'settings'; }
+    if (g === 'settings') { ui.screen = 'settings'; ui.stMsg = ''; mpEmailLoad(); }
+    else if (g === 'forgot') { ui.screen = 'forgot'; ui.fgMsg = ''; ui.fgOk = false; if (!ui.fg.user) ui.fg.user = ui.home.user || MP.name || ''; }
+    else if (g === 'forgotSend') { forgotSend(); return; }
+    else if (g === 'newpassSave') { newpassSave(); return; }
+    else if (g === 'emailSave') { emailSave(); return; }
     else if (g === 'board') { ui.screen = 'board'; ui.board = { rows: null, err: '', t: QP.tier, d: Math.max(0, DIFF_IDX.indexOf(ui.diff)), c: Math.max(0, CORN_IDX.indexOf(ui.corners)) }; boardLoad(); return; }
     else if (g === 'bflt') { var bk = b.getAttribute('data-k'), bi = +b.getAttribute('data-i'); if (ui.board && /^[tdc]$/.test(bk)) { ui.board[bk] = bi; boardLoad(); } return; }
     else if (g === 'home') { ui.screen = 'home'; }
@@ -1682,6 +1691,9 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
   var SB = { url: 'https://vhtqtgjetsbsaxlroyfr.supabase.co', key: 'sb_publishable_rG05jlR2GlmhpwyY5PpIKA_UqwqaCKb' };   // the online service (Supabase): project URL and public key
   var MP = { sb: null, user: null, name: '', friends: [], invites: [], room: null, rid: null, ch: null, chOk: false, tab: 'in', msg: '', err: '', timer: 0, hb: 0, ready: {}, race: null, loading: false, sigRoom: '', sigLists: '', pendingGo: false };
   var MPK = 'formula-life-mp';
+  var SITE = 'https://mail303-hub.github.io/formula-life/';   // where email links lead back to (must be in the Supabase redirect list)
+  var EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
+  function maskEmail(e) { e = String(e).toLowerCase(); var d = e.split('@')[1] || '', t = /\.[^.]+$/.exec(d); return e.charAt(0) + '***@' + d.charAt(0) + '***' + (t ? t[0] : ''); }
   function mpOnline() { return !!(SB.url && SB.key); }
   function mpErr(e) { return (e && (e.message || e.error_description)) || 'Something went wrong'; }
   function rpc(name, args) { return Promise.resolve(MP.sb.rpc(name, args || {})).then(function (r) { if (r.error) throw r.error; return r.data; }); }
@@ -1806,7 +1818,24 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
   /* views */
   function mpShell(inner) { return '<div class="card" id="mp"><div class="head"><h2>Play with friends</h2><button class="btn ghost" data-mp="close">Home</button></div>' + inner + '</div>'; }
   function mpEmail(u) { return String(u).toLowerCase() + '@players.formula-life.game'; }   // no real email: the account is the username
-  MP.fv = { user: '', code: '' };   // what was typed in the sign-in forms, kept when the form is redrawn after an error
+  function mpSignIn(un, pw) {   // accounts start with a made-up email; once a real email is saved the email is looked up (the server only gives it out for the right password)
+    return MP.sb.auth.signInWithPassword({ email: mpEmail(un), password: pw }).then(function (r) {
+      if (!r.error || !/invalid login/i.test(r.error.message)) return r;
+      return rpc('mp_login_email', { u: un, p: pw }).then(function (em) {
+        return em ? MP.sb.auth.signInWithPassword({ email: em, password: pw }) : r;
+      }, function (e) { return { error: { message: mpErr(e) } }; });
+    });
+  }
+  function mpEmailLoad() {   // the real email saved in the signed-in account (null = none)
+    MP.email = undefined;
+    if (!(MP.user && !mpGuest())) return;
+    rpc('mp_email_get').then(function (e) { MP.email = e || ''; if (ui.screen === 'settings') render(); }, function () { MP.email = null; if (ui.screen === 'settings') render(); });
+  }
+  function mpSavePendingEmail() {
+    var em = MP.pendingEmail; MP.pendingEmail = ''; if (!em) return Promise.resolve();
+    return rpc('mp_email_set', { e: em }).then(function () { MP.email = em.toLowerCase(); MP.msg = 'Account created. Email saved: ' + em; }, function (e) { MP.err = 'Account created, but the email was not saved: ' + mpErr(e) + '. You can add it in Settings.'; });
+  }
+  MP.fv = { user: '', code: '', email: '' };   // what was typed in the sign-in forms, kept when the form is redrawn after an error
   function mpGuest() { return !!(MP.user && MP.user.is_anonymous); }
   function mpSuggHTML() {
     if (!MP.sugg || !MP.sugg.length) return '';
@@ -1826,7 +1855,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     }
     h += '<label class="label" for="mp-user">Username</label><input id="mp-user" type="text" maxlength="16" autocomplete="username" placeholder="3 to 16 letters or numbers" value="' + esc(MP.fv.user) + '">' + (t === 'up' ? mpSuggHTML() : '') +
       '<label class="label" for="mp-pass">Password</label><input id="mp-pass" type="password" autocomplete="' + (t === 'up' ? 'new-password' : 'current-password') + '" placeholder="At least 6 characters">' +
-      (t === 'up' ? '<p class="mute">No email needed. Remember your password: it cannot be reset.</p>' : '') +
+      (t === 'up' ? '<label class="label" for="mp-email">Email (optional)</label><input id="mp-email" type="email" autocomplete="email" placeholder="you@example.com" value="' + esc(MP.fv.email || '') + '"><p class="mute">You will need it if you forget your password: we send a link to this address so you can get your password back. Without an email a lost password cannot be recovered.</p>' : '<p class="mute"><button class="btn ghost" data-go="forgot">Forgot password?</button></p>') +
       '<p style="margin-top:12px"><button class="btn" data-mp="' + (t === 'up' ? 'signup' : 'signin') + '">' + (t === 'up' ? 'Create account' : 'Sign in') + '</button></p></div>';
     return h;
   }
@@ -1916,10 +1945,12 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
       '<label class="label" for="hm-user">Username</label><p><input id="hm-user" type="text" maxlength="16" autocomplete="username" autocapitalize="off" placeholder="Your name" value="' + esc(ui.home.user || (MP.name || '')) + '"></p>' +
       '<div id="hm-sugg">' + (sg ? '<p class="mute">Free names: ' + sg + '</p>' : '') + '</div>' +
       '<label class="label" for="hm-pass">Password (optional)</label><p><input id="hm-pass" type="password" autocomplete="current-password" placeholder="Empty = play as a guest"></p>' +
+      '<label class="label" for="hm-email">Email (optional)</label><p><input id="hm-email" type="email" autocomplete="email" autocapitalize="off" placeholder="you@example.com" value="' + esc(ui.home.email || '') + '"></p>' +
+      '<p class="mute" style="font-size:.85rem;margin-top:-6px">You will need it if you forget your password: we send a link to this email so you can get your password back. Without an email a lost password cannot be recovered. You can leave it empty and add it later in Settings.</p>' +
       '<label class="label" for="hm-code">Room code (optional)</label><p><input id="hm-code" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="6 letters or numbers" style="text-transform:uppercase" value="' + esc(ui.home.code) + '"></p>' +
-      '<div id="hm-err" class="bad">' + esc(ui.homeErr) + '</div>' +
+      '<div id="hm-ok" class="good">' + esc(ui.homeOk || '') + '</div><div id="hm-err" class="bad">' + esc(ui.homeErr) + '</div>' +
       '<p class="mute" style="margin-top:8px">Quick race: ' + esc(TIERS[QP.tier].name) + ', track ' + QP.lvl + ' of 10 (progress is saved in this browser)</p>' +
-      '<p style="margin-top:12px"><button class="btn" id="hm-go" data-go="homePlay">Play</button></p>' +
+      '<p style="margin-top:12px"><button class="btn" id="hm-go" data-go="homePlay">Play</button> <button class="btn ghost" data-go="forgot">Forgot password?</button></p>' +
       '<p class="mute" style="font-size:.85rem">A new username with a password makes your account. The same username and password signs you in. No password means guest. Friends, career and other options are behind Settings.</p></div>';
   }
   function boardLoad() {
@@ -1952,9 +1983,77 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
       '<p style="margin:12px 0 6px"><b>' + esc(TIERS[b.t].name) + '</b> | opponents <b>' + ['Easy', 'Medium', 'Hard'][b.d] + '</b> | corners <b>' + ['Gentle', 'Medium', 'Sharp'][b.c] + '</b></p>' +
       '<p class="mute">Every combination has its own table, so the competition is fair. Players with an account only. Ranked by tracks cleared (top finish needed), then points.</p>' + body + '</div>';
   }
+  function forgotView() {
+    return '<div class="card start" id="forgot"><div class="head"><h2>Forgot password</h2><button class="btn ghost" data-go="home">Back</button></div>' +
+      '<p class="mute">Type your username and the email you saved in your account. We send a link that lets you choose a new password.</p>' +
+      '<label class="label" for="fg-user">Username</label><p><input id="fg-user" type="text" maxlength="16" autocomplete="username" autocapitalize="off" value="' + esc(ui.fg.user || ui.home.user || '') + '"></p>' +
+      '<label class="label" for="fg-email">Email</label><p><input id="fg-email" type="email" autocomplete="email" autocapitalize="off" placeholder="you@example.com" value="' + esc(ui.fg.email || '') + '"></p>' +
+      '<div id="fg-msg" class="' + (ui.fgOk ? 'good' : 'bad') + '">' + esc(ui.fgMsg || '') + '</div>' +
+      '<p style="margin-top:12px"><button class="btn" id="fg-go" data-go="forgotSend">Send link</button></p>' +
+      '<p class="mute" style="font-size:.85rem">No email saved in your account? Then the password cannot be recovered. You can play as a guest, or make a new account with another username.</p></div>';
+  }
+  function forgotSend() {
+    var gv = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+    var un = gv('fg-user'), em = gv('fg-email'); ui.fg.user = un; ui.fg.email = em;
+    var btn = document.getElementById('fg-go');
+    var say = function (m, ok) { ui.fgMsg = m; ui.fgOk = !!ok; var e = document.getElementById('fg-msg'); if (e) { e.className = ok ? 'good' : 'bad'; e.textContent = m; } if (btn) btn.disabled = false; };
+    if (!/^[A-Za-z0-9_]{3,16}$/.test(un)) return say('Type your username (3 to 16 letters, numbers or _).');
+    if (!EMAIL_RE.test(em)) return say('Type the email address you saved in your account.');
+    if (!mpOnline()) return say('Online play is not set up in this copy of the game.');
+    if (btn) btn.disabled = true;
+    say('Checking...', true); if (btn) btn.disabled = true;
+    mpConnect(function (err) {
+      if (err) return say(err);
+      rpc('mp_email_hint', { u: un }).then(function (h) {
+        if (!h || h.state === 'noaccount') return say('There is no account with that username.');
+        if (h.state === 'none') return say('This account has no email saved, so its password cannot be recovered. You can play as a guest, or make a new account with another username and save an email there.');
+        if (maskEmail(em) !== h.hint) return say('The email saved in this account looks like ' + h.hint + '. That does not match what you typed. Try another address.');
+        return MP.sb.auth.resetPasswordForEmail(em, { redirectTo: SITE }).then(function (r) {
+          if (r.error) { var m = r.error.message || ''; return say(/invalid/i.test(m) ? 'That email address is not valid.' : /rate|limit|seconds/i.test(m) ? 'Too many emails were sent. Wait a few minutes and try again.' : m); }
+          say('A link is on its way to ' + em + ' (if it is the right address for this account). Open it, then choose a new password. Check the spam folder too.', true);
+        });
+      }, function (e) { say(mpErr(e)); });
+    });
+  }
+  function newpassView() {
+    if (!(MP.user && MP.name)) return '<div class="card start"><h2>New password</h2><p class="bad">The link did not sign you in. It may have expired or been used already.</p><p><button class="btn" data-go="forgot">Get a new link</button> <button class="btn ghost" data-go="home">Home</button></p></div>';
+    return '<div class="card start" id="newpass"><h2>New password</h2><p class="mute">Choose a new password for <b>' + esc(MP.name) + '</b>.</p>' +
+      '<label class="label" for="np-1">New password</label><p><input id="np-1" type="password" autocomplete="new-password" placeholder="At least 6 characters"></p>' +
+      '<label class="label" for="np-2">Type it again</label><p><input id="np-2" type="password" autocomplete="new-password"></p>' +
+      '<div id="np-msg" class="bad">' + esc(ui.npMsg || '') + '</div>' +
+      '<p style="margin-top:12px"><button class="btn" id="np-go" data-go="newpassSave">Save password</button></p></div>';
+  }
+  function newpassSave() {
+    var a = document.getElementById('np-1'), b = document.getElementById('np-2'), m = document.getElementById('np-msg'), btn = document.getElementById('np-go');
+    var say = function (t) { ui.npMsg = t; if (m) m.textContent = t; if (btn) btn.disabled = false; };
+    if (!a || !b) return;
+    if (a.value.length < 6) return say('The password needs at least 6 characters.');
+    if (a.value !== b.value) return say('The two passwords are not the same.');
+    if (btn) btn.disabled = true;
+    MP.sb.auth.updateUser({ password: a.value }).then(function (r) {
+      if (r.error) return say(/different|same/i.test(r.error.message) ? 'Choose a password that is different from the old one.' : r.error.message);
+      ui.npMsg = ''; ui.homeOk = 'Password changed. You are signed in as ' + MP.name + '.'; ui.screen = 'home';
+      try { localStorage.setItem(MPK, '1'); } catch (e) {}
+      mpStartTimers(); qpSync(); render();
+    }, function (e) { say(mpErr(e)); });
+  }
+  function emailSave() {
+    var inp = document.getElementById('st-email'), em = inp ? inp.value.trim() : '';
+    var say = function (t, ok) { ui.stMsg = t; ui.stOk = !!ok; var e = document.getElementById('st-msg'); if (e) { e.className = ok ? 'good' : 'bad'; e.textContent = t; } };
+    if (!EMAIL_RE.test(em)) return say('That email address does not look right.');
+    say('Saving...', true);
+    rpc('mp_email_set', { e: em }).then(function () { MP.email = em.toLowerCase(); ui.stMsg = 'Email saved. If you forget your password, use Forgot password on the home screen.'; ui.stOk = true; if (ui.screen === 'settings') render(); }, function (e) { say(mpErr(e)); });
+  }
   function settingsView() {
     var who = MP.user && MP.name ? '<p>Signed in as <b>' + esc(MP.name) + '</b>' + (mpGuest() ? ' <span class="chip">guest</span>' : '') + ' <button class="btn ghost" data-mp="signout">' + (mpGuest() ? 'Leave' : 'Sign out') + '</button></p>' : '<p class="mute">Not signed in. Sign in on the home screen.</p>';
-    return '<div class="card start"><div class="head"><h2>Settings</h2><button class="btn ghost" data-go="home">Back</button></div>' + who +
+    var acct = '';
+    if (MP.user && !mpGuest()) {
+      acct = '<p class="label">Email for password recovery</p>' + (MP.email === undefined ? '<p class="mute">Loading...</p>' :
+        '<p class="mute">' + (MP.email ? 'Saved email: <b>' + esc(MP.email) + '</b>. Type a new address to change it.' : 'No email saved yet. Add one: if you forget your password we send a link to it so you can get your password back. Without an email a lost password cannot be recovered.') + '</p>' +
+        '<p><input id="st-email" type="email" autocomplete="email" autocapitalize="off" placeholder="you@example.com"> <button class="btn" data-go="emailSave">' + (MP.email ? 'Change email' : 'Save email') + '</button></p>') +
+        '<div id="st-msg" class="' + (ui.stOk ? 'good' : 'bad') + '">' + esc(ui.stMsg || '') + '</div>';
+    } else if (MP.user) acct = '<p class="mute">You are playing as a guest. To save an email for password recovery, create an account (username and password) on the home screen.</p>';
+    return '<div class="card start"><div class="head"><h2>Settings</h2><button class="btn ghost" data-go="home">Back</button></div>' + who + acct +
       '<p class="label">Opponents</p><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">' + Object.keys(DIFF).map(function (k) { return opt('diff', k, ui.diff === k, DIFF[k].label, DIFF[k].desc, false); }).join('') + '</div>' +
       '<p class="label">Corners</p><div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">' + Object.keys(CORNERS).map(function (k) { return opt('corners', k, ui.corners === k, CORNERS[k].label, CORNERS[k].desc, false); }).join('') + '</div>' +
       '<p class="label">Quick race level</p><div class="qgrid">' + TIERS.map(function (q, i) { var lock = i > QP.unlocked; return '<button class="btn ' + (i === QP.tier ? '' : 'ghost') + '" data-go="qtier" data-i="' + i + '"' + (lock ? ' disabled' : '') + '>' + (lock ? '&#128274; ' : '') + esc(q.name) + '</button>'; }).join('') + '</div>' +
@@ -2011,8 +2110,8 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
           var named = function (user) { MP.user = user; try { localStorage.setItem(MPK, '1'); } catch (e) {} return rpc('mp_set_username', { u: un }).then(function () { MP.name = un; mpStartTimers(); qpSync(); cb(null); }); };
           if (pw) {
             if (isFree) return MP.sb.auth.signUp({ email: mpEmail(un), password: pw }).then(function (r) { if (r.error) throw r.error; if (!r.data.session) throw 'Online accounts need email confirmation, which is switched on by mistake.'; return named(r.data.user); }).catch(fail);
-            return MP.sb.auth.signInWithPassword({ email: mpEmail(un), password: pw }).then(function (r) {
-              if (r.error) throw (/invalid login/i.test(r.error.message) ? 'That name is taken, or the password is wrong.' : r.error);
+            return mpSignIn(un, pw).then(function (r) {
+              if (r.error) throw (/invalid login/i.test(r.error.message) ? 'That name is taken, or the password is wrong. Forgot it? Use Forgot password.' : r.error);
               MP.user = r.data.user; try { localStorage.setItem(MPK, '1'); } catch (e) {}
               return new Promise(function (ok) { mpLoadProfile(ok); }).then(function () { if (!MP.name) throw 'This account has no username yet.'; mpStartTimers(); qpSync(); cb(null); });
             }).catch(fail);
@@ -2027,12 +2126,15 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
   }
   function homePlay() {
     var gv = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
-    var un = gv('hm-user'), pwe = document.getElementById('hm-pass'), pw = pwe ? pwe.value : '', code = gv('hm-code').toUpperCase();
-    ui.home.user = un; ui.home.code = code; ui.homeErr = ''; ui.homeSugg = []; homeErr('', []); saveUI();
+    var un = gv('hm-user'), pwe = document.getElementById('hm-pass'), pw = pwe ? pwe.value : '', code = gv('hm-code').toUpperCase(), em = gv('hm-email');
+    ui.home.user = un; ui.home.code = code; ui.home.email = em; ui.homeErr = ''; ui.homeOk = ''; ui.homeSugg = []; homeErr('', []); saveUI();
+    var ok0 = document.getElementById('hm-ok'); if (ok0) ok0.textContent = '';
     if (un && !/^[A-Za-z0-9_]{3,16}$/.test(un)) return homeErr('Username: 3 to 16 letters, numbers or _');
     if (code && !/^[A-Z0-9]{6}$/.test(code)) return homeErr('The room code has 6 letters or numbers.');
     if (pw && !un) return homeErr('Type your username too.');
     if (pw && pw.length < 6) return homeErr('The password needs at least 6 characters.');
+    if (em && !EMAIL_RE.test(em)) return homeErr('That email address does not look right. Fix it, or leave it empty.');
+    if (em && !pw) return homeErr('To save an email you also need a password. Type one, or clear the email.');
     if (!code && !pw) return quickRace(un || (MP.name || 'You'));
     if (!un && !(MP.user && MP.name)) return homeErr('Type your username to join a room.');
     if (!mpOnline()) return homeErr('Online play is not set up in this copy of the game.');
@@ -2041,11 +2143,18 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     homeAuth(un, pw, function (err, stop) {
       if (stop) return;
       if (err) return homeErr(err);
-      if (!code) return quickRace(MP.name || un);
-      rpc('mp_join_code', { c: code }).then(function (rid) {
-        MP.rid = rid; MP.msg = ''; MP.err = ''; MP.sigRoom = ''; MP.sigLists = ''; ui.screen = 'friends'; ui.home.code = '';
-        mpSubscribe(rid); mpStartTimers(); render(); return mpRefresh();
-      }, function (e) { homeErr(mpErr(e)); });
+      var go = function () {
+        if (!code) return quickRace(MP.name || un);
+        rpc('mp_join_code', { c: code }).then(function (rid) {
+          MP.rid = rid; MP.msg = ''; MP.err = ''; MP.sigRoom = ''; MP.sigLists = ''; ui.screen = 'friends'; ui.home.code = '';
+          mpSubscribe(rid); mpStartTimers(); render(); return mpRefresh();
+        }, function (e) { homeErr(mpErr(e)); });
+      };
+      if (em && pw && !mpGuest()) {   // a new account, or signing in to one that has no email yet: save the email
+        return rpc('mp_email_get').then(function (cur) { return cur ? null : rpc('mp_email_set', { e: em }); }).then(function () { ui.home.email = ''; go(); },
+          function (e) { homeErr('You are signed in, but the email was not saved: ' + mpErr(e) + '. Fix it and press Play again, or add it later in Settings.'); });
+      }
+      go();
     });
   }
 
@@ -2066,7 +2175,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     mpLoadProfile(function () {
       if (!MP.name && MP.pendingName) {
         var u = MP.pendingName; MP.pendingName = '';
-        return rpc('mp_set_username', { u: u }).then(function () { MP.name = u; mpStartTimers(); render(); mpRefresh(); }, function (e) { MP.err = mpErr(e); render(); });
+        return rpc('mp_set_username', { u: u }).then(function () { MP.name = u; mpStartTimers(); return mpSavePendingEmail(); }).then(function () { render(); mpRefresh(); }, function (e) { MP.err = mpErr(e); render(); });
       }
       if (MP.name) mpStartTimers();
       render(); mpRefresh();
@@ -2082,22 +2191,23 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
       mpConnect(function (err) { MP.loading = false; if (err) MP.err = err; if (MP.user && MP.name) mpStartTimers(); render(); if (MP.user && MP.name) mpRefresh(); });
     }
     else if (a === 'close') { if (MP.rid) { rpc('mp_leave', { rid: MP.rid }).then(null, function () {}); mpDropRoom(''); } ui.screen = 'home'; render(); }
-    else if (a === 'tab-in' || a === 'tab-up' || a === 'tab-code') { MP.tab = a === 'tab-up' ? 'up' : a === 'tab-code' ? 'code' : 'in'; MP.err = ''; MP.msg = ''; MP.sugg = []; MP.fv = { user: MP.fv.user, code: MP.fv.code }; render(); }
+    else if (a === 'tab-in' || a === 'tab-up' || a === 'tab-code') { MP.tab = a === 'tab-up' ? 'up' : a === 'tab-code' ? 'code' : 'in'; MP.err = ''; MP.msg = ''; MP.sugg = []; MP.fv = { user: MP.fv.user, code: MP.fv.code, email: '' }; render(); }
     else if (a === 'pick') { var f0 = document.getElementById('mp-user'); MP.fv.user = b.getAttribute('data-name'); if (f0) { f0.value = MP.fv.user; } MP.sugg = []; MP.err = ''; var ae = document.getElementById('mp-autherr'); if (ae) ae.textContent = ''; b.parentNode.remove(); }
     else if (a === 'signin') {
       var un0 = mpVal('mp-user'), pw = document.getElementById('mp-pass').value; MP.fv.user = un0;
       MP.err = ''; MP.msg = '';
       if (!/^[A-Za-z0-9_]{3,16}$/.test(un0)) { MP.err = 'Username: 3 to 16 letters, numbers or _'; render(); return; }
-      MP.sb.auth.signInWithPassword({ email: mpEmail(un0), password: pw }).then(function (r) { if (r.error) { MP.err = /invalid login/i.test(r.error.message) ? 'Wrong username or password.' : r.error.message; render(); } else mpAfterSignIn(r.data.user); });
+      mpSignIn(un0, pw).then(function (r) { if (r.error) { MP.err = /invalid login/i.test(r.error.message) ? 'Wrong username or password. If you forgot it, use Forgot password.' : r.error.message; render(); } else mpAfterSignIn(r.data.user); });
     }
     else if (a === 'signup') {
-      var pw2 = document.getElementById('mp-pass').value, un = mpVal('mp-user'); MP.fv.user = un;
+      var pw2 = document.getElementById('mp-pass').value, un = mpVal('mp-user'), em2 = mpVal('mp-email'); MP.fv.user = un; MP.fv.email = em2;
       MP.err = ''; MP.msg = ''; MP.sugg = [];
       if (!/^[A-Za-z0-9_]{3,16}$/.test(un)) { MP.err = 'Username: 3 to 16 letters, numbers or _'; render(); return; }
       if (pw2.length < 6) { MP.err = 'The password needs at least 6 characters.'; render(); return; }
+      if (em2 && !EMAIL_RE.test(em2)) { MP.err = 'That email address does not look right. Fix it, or leave it empty.'; render(); return; }
       mpNameCheck(un, function (ok) {
         if (!ok) return render();
-        MP.pendingName = un;
+        MP.pendingName = un; MP.pendingEmail = em2;
         MP.sb.auth.signUp({ email: mpEmail(un), password: pw2 }).then(function (r) {
           if (r.error) { MP.err = /already registered/i.test(r.error.message) ? 'That username is taken.' : r.error.message; render(); }
           else if (r.data.session) mpAfterSignIn(r.data.user);
@@ -2140,7 +2250,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     }
     else if (a === 'signout') {
       mpUnsub(); mpStopTimers(); MP.rid = null; MP.room = null;
-      MP.sb.auth.signOut().then(function () { MP.user = null; MP.name = ''; MP.friends = []; MP.invites = []; try { localStorage.removeItem(MPK); } catch (er) {} render(); });
+      MP.sb.auth.signOut().then(function () { MP.user = null; MP.name = ''; MP.email = undefined; MP.friends = []; MP.invites = []; try { localStorage.removeItem(MPK); } catch (er) {} render(); });
     }
     else if (a === 'addfriend') { var nm = mpVal('mp-add'); if (nm) mpAct(rpc('mp_request', { u: nm }), 'Request sent. If they already asked you, you are now friends.').then(function () { var f = document.getElementById('mp-add'); if (f) f.value = ''; }); }
     else if (a === 'accept') mpAct(rpc('mp_respond', { other: id, accept: true }), 'Friend added.');
@@ -2179,6 +2289,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     if (s.phase === 'prep') s.cur = Math.min(progLvl(), 9);
   }
   if (s && s.calendar) { if (DIFF[s.diff]) ui.diff = s.diff; if (CORNERS[s.corners]) ui.corners = s.corners; }
+  var authKind = /[#&]type=recovery/.test(location.hash) ? 'recovery' : /[#&](error_code|error)=/.test(location.hash) ? 'error' : '';   // opened from an email link? (read before the online library clears the address)
   render();
   var inviteCode = ''; try { var jm = /[?&]join=([A-Za-z0-9]{6})(?![A-Za-z0-9])/.exec(location.search); if (jm) inviteCode = jm[1].toUpperCase(); } catch (e) {}
   if (inviteCode) {   // opened from an invite link: the code is filled in on the home screen
@@ -2187,7 +2298,9 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     render();
   }
   try {
-    if (mpOnline() && (inviteCode || localStorage.getItem(MPK) === '1')) mpConnect(function () {
+    if (mpOnline() && (inviteCode || authKind || localStorage.getItem(MPK) === '1')) mpConnect(function () {
+      if (authKind === 'recovery' && MP.user && MP.name) { ui.screen = 'newpass'; ui.npMsg = ''; render(); }
+      else if (authKind) { ui.screen = 'forgot'; ui.fgOk = false; ui.fgMsg = 'That link has expired or was already used. Request a new one.'; render(); }
       if (MP.user && MP.name) { mpStartTimers(); qpSync(); var hu = document.getElementById('hm-user'); if (hu && !hu.value) { hu.value = MP.name; ui.home.user = MP.name; } }
     });
   } catch (e) {}
