@@ -424,3 +424,69 @@ $$;
 revoke all on function public.mp_progress_save(jsonb), public.mp_leaderboard() from public, anon;
 grant execute on function public.mp_progress_save(jsonb) to authenticated;
 grant execute on function public.mp_leaderboard() to anon, authenticated;
+
+-- Formula Life, part 4: leaderboards per class x opponents x corners.
+create table if not exists public.mp_scores (
+  id uuid not null references auth.users(id) on delete cascade,
+  diff smallint not null check (diff between 0 and 2),
+  corners smallint not null check (corners between 0 and 2),
+  tier smallint not null check (tier between 0 and 5),
+  mask int not null default 0 check (mask between 0 and 1023),
+  points int not null default 0,
+  updated timestamptz not null default now(),
+  primary key (id, diff, corners, tier)
+);
+alter table public.mp_scores enable row level security;
+
+create or replace function public.mp_progress_save(p jsonb) returns json
+language plpgsql security definer set search_path = public as $$
+declare old public.mp_progress; k text; v numeric; e jsonb; np jsonb; ncl int := 0; nun int; npts int; nmon bigint; ntier int; nlvl int; r public.mp_progress; sc jsonb;
+begin
+  if auth.uid() is null or public.mp_is_guest() then return null; end if;
+  if not exists (select 1 from public.mp_profiles where id = auth.uid()) then return null; end if;
+  select * into old from public.mp_progress where id = auth.uid();
+  np := coalesce(old.prog, '{}'::jsonb);
+  for k, v in select key, case when jsonb_typeof(value) = 'number' then (value #>> '{}')::numeric else 0 end
+              from jsonb_each(coalesce(p -> 'prog', '{}'::jsonb)) where key ~ '^[0-5]$' loop
+    np := jsonb_set(np, array[k], to_jsonb(greatest(coalesce((np ->> k)::int, 0), least(10, greatest(0, floor(v)::int)))));
+  end loop;
+  for k in select key from jsonb_each(np) loop ncl := ncl + coalesce((np ->> k)::int, 0); end loop;
+  nun := least(5, greatest(0, coalesce(old.unlocked, 0), coalesce(floor((p ->> 'unlocked')::numeric)::int, 0)));
+  npts := least(1000000000, greatest(coalesce(old.points, 0), coalesce(floor((p ->> 'points')::numeric)::int, 0)));
+  nmon := least(1000000000000::bigint, greatest(coalesce(old.money, 0), coalesce(floor((p ->> 'money')::numeric)::bigint, 0)));
+  if old.id is null or ncl >= old.cleared then
+    ntier := least(5, greatest(0, coalesce(floor((p ->> 'tier')::numeric)::int, 0)));
+    nlvl := least(10, greatest(1, coalesce(floor((p ->> 'lvl')::numeric)::int, 1)));
+  else
+    ntier := old.tier; nlvl := old.lvl;
+  end if;
+  insert into public.mp_progress (id, tier, lvl, unlocked, prog, cleared, points, money, updated)
+    values (auth.uid(), ntier, nlvl, nun, np, ncl, npts, nmon, now())
+    on conflict (id) do update set tier = excluded.tier, lvl = excluded.lvl, unlocked = excluded.unlocked, prog = excluded.prog,
+      cleared = excluded.cleared, points = excluded.points, money = excluded.money, updated = now()
+    returning * into r;
+  -- scores per combination "opponents,corners,class": cleared tracks are OR-ed, points keep the highest
+  for k, e in select key, value from jsonb_each(case when jsonb_typeof(p -> 'sc') = 'object' then p -> 'sc' else '{}'::jsonb end) where key ~ '^[0-2],[0-2],[0-5]$' loop
+    insert into public.mp_scores (id, diff, corners, tier, mask, points)
+      values (auth.uid(), split_part(k, ',', 1)::smallint, split_part(k, ',', 2)::smallint, split_part(k, ',', 3)::smallint,
+        case when jsonb_typeof(e -> 'm') = 'number' then least(1023, greatest(0, floor((e ->> 'm')::numeric)::int)) else 0 end,
+        case when jsonb_typeof(e -> 'p') = 'number' then least(1000000000, greatest(0, floor((e ->> 'p')::numeric)::int)) else 0 end)
+      on conflict (id, diff, corners, tier) do update set mask = public.mp_scores.mask | excluded.mask,
+        points = greatest(public.mp_scores.points, excluded.points), updated = now();
+  end loop;
+  select coalesce(jsonb_object_agg(s.diff || ',' || s.corners || ',' || s.tier, jsonb_build_object('m', s.mask, 'p', s.points)), '{}'::jsonb)
+    into sc from public.mp_scores s where s.id = auth.uid();
+  return json_build_object('tier', r.tier, 'lvl', r.lvl, 'unlocked', r.unlocked, 'prog', r.prog, 'points', r.points, 'money', r.money, 'sc', sc);
+end $$;
+
+drop function if exists public.mp_leaderboard();
+create or replace function public.mp_board(d int, c int, t int) returns table (username text, mask int, points int)
+language sql stable security definer set search_path = public as $$
+  select pr.username, s.mask, s.points
+  from public.mp_scores s join public.mp_profiles pr on pr.id = s.id
+  where s.diff = d and s.corners = c and s.tier = t and (s.mask <> 0 or s.points > 0)
+  order by (select count(*) from generate_series(0, 9) b where (s.mask >> b) & 1 = 1) desc, s.points desc, pr.username
+  limit 50;
+$$;
+revoke all on function public.mp_board(int, int, int) from public, anon;
+grant execute on function public.mp_board(int, int, int) to anon, authenticated;
