@@ -1572,6 +1572,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
     else if (g === 'homePick') { var hu = document.getElementById('hm-user'); ui.home.user = b.getAttribute('data-name'); if (hu) hu.value = ui.home.user; ui.homeSugg = []; ui.homeErr = ''; var hg = document.getElementById('hm-sugg'); if (hg) hg.innerHTML = ''; var he = document.getElementById('hm-err'); if (he) he.textContent = ''; return; }
     else if (g === 'qtier') { var qi = +b.getAttribute('data-i'); if (qi >= 0 && qi <= QP.unlocked) { QP.tier = qi; QP.lvl = Math.min(qpProg(qi) + 1, 10); qpSave(); } }
     else if (g === 'qlvl') { var qn = +b.getAttribute('data-i'); if (qn >= 1 && qn <= qpProg(QP.tier) + 1) { QP.lvl = qn; qpSave(); } }
+    else if (g === 'quickNext') { if (ui.quick && ui.quick.unlocked && ui.quick.tier + 1 <= QP.unlocked) { QP.tier = ui.quick.tier + 1; QP.lvl = 1; qpSave(); } quickRace(s && s.name); return; }
     else if (g === 'quickAgain') { quickRace(s && s.name); return; }
     else if (g === 'quickExit') { quickExit(); return; }
     else if (g === 'start') { newCareer(ui.name.trim()); save(); }
@@ -1892,10 +1893,12 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   function quickResultView() {
     var q = ui.quick || { pos: 0, time: 0, rows: [] };
     var note = q.cleared ? '<p class="good">Well done! Difficulty ' + q.lvl + ' of ' + esc(TIERS[q.tier].name) + ' cleared.' + (q.lvl < 10 ? ' The next track is open.' : '') + (q.unlocked ? ' New level unlocked: ' + esc(q.unlocked) + '.' : '') + '</p>' : q.podium ? '<p class="mute">Good finish. Nothing new to unlock here.</p>' : '<p class="mute">To clear this track and open the next one, ' + needTxt(q.lvl) + '.</p>';
-    return '<div class="card start"><h2>Quick race result</h2><div class="big">' + ord(q.pos) + '</div><p class="mono">' + fmt(q.time) + '</p>' + note + '<div class="mprows">' +
+    var btns = (q.cleared && q.unlocked ? '<button class="btn" data-go="quickNext">Start ' + esc(q.unlocked) + '</button> <button class="btn ghost" data-go="quickAgain">Race this track again</button> ' : q.cleared && q.lvl < 10 ? '<button class="btn" data-go="quickAgain">Next track: ' + esc(TRACKS[q.lvl % TRACKS.length].name) + ' (' + (q.lvl + 1) + ' of 10)</button> ' : q.podium ? '<button class="btn" data-go="quickAgain">Race again</button> ' : '<button class="btn" data-go="quickAgain">Try this track again</button> ');
+    return '<div class="card start"><h2>Quick race result</h2><div class="big">' + ord(q.pos) + '</div><p class="mono">' + fmt(q.time) + '</p>' + note + '<p style="margin:12px 0">' + btns + '<button class="btn ghost" data-go="quickExit">Home</button></p><div class="mprows">' +
       q.rows.map(function (r, i) { return '<div class="mprow' + (r.me ? ' me' : '') + '"><span>' + (i + 1) + '. ' + esc(r.name) + '</span></div>'; }).join('') +
-      '</div><p style="margin-top:14px"><button class="btn" data-go="quickAgain">' + (q.cleared && q.lvl < 10 ? 'Next track' : 'Race again') + '</button> <button class="btn ghost" data-go="quickExit">Home</button></p></div>';
+      '</div></div>';
   }
+
   function quickRace(name) {   // a throw-away state: your saved career is not touched
     if (!ui.temp) ui.stash = s;
     ui.temp = true;
