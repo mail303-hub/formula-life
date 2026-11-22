@@ -207,6 +207,9 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
 }
 }
 @media (pointer: coarse) { body { overscroll-behavior: none; -webkit-user-select: none; user-select: none; } input { -webkit-user-select: text; user-select: text; } }
+button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.stage, .slider, .slider * { touch-action: none; }
+@media (pointer: coarse) { body { -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; } }
 .padov { position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .padbox { background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 16px; width: min(560px, 100%); max-height: 100%; overflow: auto; }
 .padrow { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
@@ -1353,7 +1356,10 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   document.addEventListener('pointerup', endSlider); document.addEventListener('pointercancel', endSlider);
   function clearTouch() { touchPtr = {}; syncTouch(); resetSliders(); }
   document.addEventListener('pointerup', endTouch); document.addEventListener('pointercancel', endTouch);
-  document.addEventListener('contextmenu', function (e) { if (e.target.closest && e.target.closest('.stage')) e.preventDefault(); });
+  function isField(e) { var n = e.target; return n && n.closest && n.closest('input, textarea'); }
+  document.addEventListener('contextmenu', function (e) { if (!isField(e)) e.preventDefault(); });
+  document.addEventListener('selectstart', function (e) { if (!isField(e) && matchMedia('(pointer: coarse)').matches) e.preventDefault(); });
+  document.addEventListener('dragstart', function (e) { if (!isField(e)) e.preventDefault(); });
   window.addEventListener('blur', function () { Game.kb = {}; clearTouch(); });
   window.__fl = { MP: function () { return MP; }, mpRecv: function (e, d) { return mpRecv(e, d); }, mpBegin: function (d) { return mpBegin(d); }, S: function () { return s; }, runWeekend: runWeekend, buildTrack: buildTrack, CORNERS: CORNERS, Game: Game, profile: profile, carRear: carRear, kartRear: kartRear, Snd: Snd };
 
