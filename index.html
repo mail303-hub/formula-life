@@ -1691,7 +1691,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
   var SB = { url: 'https://vhtqtgjetsbsaxlroyfr.supabase.co', key: 'sb_publishable_rG05jlR2GlmhpwyY5PpIKA_UqwqaCKb' };   // the online service (Supabase): project URL and public key
   var MP = { sb: null, user: null, name: '', friends: [], invites: [], room: null, rid: null, ch: null, chOk: false, tab: 'in', msg: '', err: '', timer: 0, hb: 0, ready: {}, race: null, loading: false, sigRoom: '', sigLists: '', pendingGo: false };
   var MPK = 'formula-life-mp';
-  var SITE = 'https://mail303-hub.github.io/formula-life/';   // where email links lead back to (must be in the Supabase redirect list)
+  var SITE = 'https://mail303-hub.github.io/formula-life/';   // where email links lead back to (it must be in the Supabase redirect list)
   var EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
   function maskEmail(e) { e = String(e).toLowerCase(); var d = e.split('@')[1] || '', t = /\.[^.]+$/.exec(d); return e.charAt(0) + '***@' + d.charAt(0) + '***' + (t ? t[0] : ''); }
   function mpOnline() { return !!(SB.url && SB.key); }
