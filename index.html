@@ -288,8 +288,8 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   function saveUI() { try { localStorage.setItem(UIK, JSON.stringify({ diff: ui.diff, corners: ui.corners, quickLvl: ui.quickLvl, user: ui.home.user })); } catch (e) {} }
   (function () { try { var o = JSON.parse(localStorage.getItem(UIK) || 'null'); if (o) { if (DIFF[o.diff]) ui.diff = o.diff; if (CORNERS[o.corners]) ui.corners = o.corners; if (o.quickLvl >= 1 && o.quickLvl <= 10) ui.quickLvl = o.quickLvl | 0; if (typeof o.user === 'string') ui.home.user = o.user.slice(0, 16); } } catch (e) {} })();
   /* quick race progress (guests, accounts and room players alike): kept in this browser, same levels as the career */
-  var QPK = 'formula-life-qp', QP = { tier: 0, lvl: 1, unlocked: 0, prog: {} };
-  (function () { try { var o = JSON.parse(localStorage.getItem(QPK) || 'null'); if (o && typeof o === 'object') { QP.tier = clamp(o.tier | 0, 0, TIERS.length - 1); QP.unlocked = clamp(o.unlocked | 0, 0, TIERS.length - 1); QP.prog = o.prog && typeof o.prog === 'object' ? o.prog : {}; QP.lvl = clamp(o.lvl | 0 || 1, 1, 10); } } catch (e) {} })();
+  var QPK = 'formula-life-qp', QP = { tier: 0, lvl: 1, unlocked: 0, prog: {}, points: 0, money: 0 };
+  (function () { try { var o = JSON.parse(localStorage.getItem(QPK) || 'null'); if (o && typeof o === 'object') { QP.tier = clamp(o.tier | 0, 0, TIERS.length - 1); QP.unlocked = clamp(o.unlocked | 0, 0, TIERS.length - 1); QP.prog = o.prog && typeof o.prog === 'object' ? o.prog : {}; QP.lvl = clamp(o.lvl | 0 || 1, 1, 10); QP.points = Math.max(0, +o.points || 0); QP.money = Math.max(0, +o.money || 0); } } catch (e) {} })();
   function qpSave() { try { localStorage.setItem(QPK, JSON.stringify(QP)); } catch (e) {} }
   function qpProg(i) { return clamp(+QP.prog[i] || 0, 0, 10); }
   QP.tier = Math.min(QP.tier, QP.unlocked); QP.lvl = Math.min(QP.lvl, qpProg(QP.tier) + 1);
@@ -443,9 +443,9 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       s.prog[s.tier] = tr.lvl;
       if (tr.lvl >= 10) {
         s.cleared = s.cleared || []; if (s.cleared.indexOf(s.tier) < 0) s.cleared.push(s.tier);
-        if (s.tier < TIERS.length - 1) { s.unlocked = Math.max(unlockedTier(), s.tier + 1); lvlNote = { t: 'Level complete! You finished ' + tier().name + ' and ' + TIERS[s.tier + 1].name + ' is now open.', c: 'good' }; }
+        if (s.tier < TIERS.length - 1) { s.unlocked = Math.max(unlockedTier(), s.tier + 1); lvlNote = { t: 'Level complete! Your finish (' + ord(mine.pos) + ') clears all 10 tracks of ' + tier().name + '. Next level opened: ' + TIERS[s.tier + 1].name + ', starting with Track 1 of 10.', c: 'good' }; }
         else lvlNote = { t: 'Track difficulty 10 cleared! You finished Formula 1.', c: 'good' };
-      } else lvlNote = { t: 'Track complete! Track ' + tr.lvl + ' is cleared and track ' + (tr.lvl + 1) + ' is now open.', c: 'good' };
+      } else lvlNote = { t: 'Track complete! Your finish (' + ord(mine.pos) + ') clears Track ' + tr.lvl + ' of 10. Next track opened: Track ' + (tr.lvl + 1) + ' of 10: ' + s.calendar[tr.lvl].name + '.', c: 'good' };
     } else if (!mine.dnf && mine.pos > needPos(tr.lvl) && tr.lvl === progLvl() + 1) lvlNote = { t: 'To clear difficulty ' + tr.lvl + ' and unlock the next one, ' + needTxt(tr.lvl) + '. Try this track again.' };
     else if (mine.dnf && tr.lvl === progLvl() + 1) lvlNote = { t: 'You did not finish. To clear difficulty ' + tr.lvl + ', ' + needTxt(tr.lvl) + '.' };
     if (driven && driven.order) notes.push({ t: 'You drove this race yourself.' });
@@ -1601,13 +1601,15 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
       if (ui.temp) {
         var qrows = (Game.order || []).map(function (id) { var d = s.drivers.filter(function (x) { return x.id === id; })[0]; return { name: d ? d.name : '?', me: id === 'me' }; });
         var qt = QP.tier, ql = QP.lvl, cleared = false, unlockedName = '', podium = Game.pos <= needPos(ql);
+        var qpts = POINTS[Game.pos - 1] || 0, qprize = (PRIZE[Game.pos - 1] || 0) * TIERS[qt].mult;
+        QP.points += qpts; QP.money += qprize; qpSave();
         if (podium && ql === qpProg(qt) + 1) {
           cleared = true; QP.prog[qt] = ql;
           if (ql < 10) QP.lvl = ql + 1;
           else if (qt < TIERS.length - 1 && QP.unlocked < qt + 1) { QP.unlocked = qt + 1; unlockedName = TIERS[qt + 1].name; }
           qpSave();
         }
-        ui.quick = { pos: Game.pos, time: Game.finishT, rows: qrows, podium: podium, cleared: cleared, lvl: ql, tier: qt, unlocked: unlockedName }; s.phase = 'quickdone';
+        ui.quick = { pts: qpts, prize: qprize, pos: Game.pos, time: Game.finishT, rows: qrows, podium: podium, cleared: cleared, lvl: ql, tier: qt, unlocked: unlockedName }; s.phase = 'quickdone';
       } else runWeekend(null, null, { order: Game.order || [] });
     }
     else if (g === 'driveSkip') { runWeekend(null, ui.strat, { sim: true }); }
@@ -1893,7 +1895,9 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 900 / 560; bor
   }
   function quickResultView() {
     var q = ui.quick || { pos: 0, time: 0, rows: [] };
-    var note = q.cleared ? '<div class="cleared"><b>' + (q.unlocked ? 'Level complete!' : 'Track complete!') + '</b> ' + (q.unlocked ? esc(TIERS[q.tier].name) + ' is done. <b>' + esc(q.unlocked) + '</b> is now open.' : 'Track ' + q.lvl + ' of ' + esc(TIERS[q.tier].name) + ' is cleared. <b>Track ' + (q.lvl + 1) + ' is now open.</b>') + '</div>' : q.podium ? '<p class="mute">Good finish. Nothing new to unlock here.</p>' : '<p class="mute">To clear this track and open the next one, ' + needTxt(q.lvl) + '.</p>';
+    var earn = '<p><b>Earned this race:</b> ' + (q.pts || 0) + ' points and ' + money(q.prize || 0) + '. <span class="mute">Total: ' + QP.points + ' points, ' + money(QP.money) + '.</span></p>';
+    var nxt = q.tier + 1 < TIERS.length ? TIERS[q.tier + 1].name : '';
+    var note = earn + (q.cleared ? '<div class="cleared"><b>' + (q.unlocked ? 'Level complete!' : 'Track complete!') + '</b> ' + (q.unlocked ? 'Your finish (' + ord(q.pos) + ') clears all 10 tracks of ' + esc(TIERS[q.tier].name) + '. <b>Next level opened: ' + esc(q.unlocked) + '</b>, starting with Track 1 of 10: ' + esc(TRACKS[0].name) + '.' : 'Your finish (' + ord(q.pos) + ') clears Track ' + q.lvl + ' of 10 (' + esc(TRACKS[(q.lvl - 1) % TRACKS.length].name) + '). <b>Next track opened: Track ' + (q.lvl + 1) + ' of 10: ' + esc(TRACKS[q.lvl % TRACKS.length].name) + '.</b>') + '</div>' : q.podium ? '<p class="mute">Good finish. Nothing new to unlock here.</p>' : '<p class="mute">To clear this track and open the next one, ' + needTxt(q.lvl) + '.</p>');
     var btns = (q.cleared && q.unlocked ? '<button class="btn" data-go="quickNext">Start ' + esc(q.unlocked) + '</button> <button class="btn ghost" data-go="quickAgain">Race this track again</button> ' : q.cleared && q.lvl < 10 ? '<button class="btn" data-go="quickAgain">Next track: ' + esc(TRACKS[q.lvl % TRACKS.length].name) + ' (' + (q.lvl + 1) + ' of 10)</button> ' : q.podium ? '<button class="btn" data-go="quickAgain">Race again</button> ' : '<button class="btn" data-go="quickAgain">Try this track again</button> ');
     return '<div class="card start"><h2>Quick race result</h2><div class="big">' + ord(q.pos) + '</div><p class="mono">' + fmt(q.time) + '</p>' + note + '<p style="margin:12px 0">' + btns + '<button class="btn ghost" data-go="quickExit">Home</button></p><div class="mprows">' +
       q.rows.map(function (r, i) { return '<div class="mprow' + (r.me ? ' me' : '') + '"><span>' + (i + 1) + '. ' + esc(r.name) + '</span></div>'; }).join('') +
