@@ -1612,6 +1612,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     else if (g === 'forgotSend') { forgotSend(); return; }
     else if (g === 'newpassSave') { newpassSave(); return; }
     else if (g === 'emailSave') { emailSave(); return; }
+    else if (g === 'emailResend') { emailResend(); return; }
     else if (g === 'board') { ui.screen = 'board'; ui.board = { rows: null, err: '', t: QP.tier, d: Math.max(0, DIFF_IDX.indexOf(ui.diff)), c: Math.max(0, CORN_IDX.indexOf(ui.corners)) }; boardLoad(); return; }
     else if (g === 'bflt') { var bk = b.getAttribute('data-k'), bi = +b.getAttribute('data-i'); if (ui.board && /^[tdc]$/.test(bk)) { ui.board[bk] = bi; boardLoad(); } return; }
     else if (g === 'home') { ui.screen = 'home'; }
@@ -1826,14 +1827,25 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
       }, function (e) { return { error: { message: mpErr(e) } }; });
     });
   }
-  function mpEmailLoad() {   // the real email saved in the signed-in account (null = none)
+  function mpEmailLoad() {   // {email: the Verified address or null, pending: an address waiting for its confirmation link or null}
     MP.email = undefined;
     if (!(MP.user && !mpGuest())) return;
-    rpc('mp_email_get').then(function (e) { MP.email = e || ''; if (ui.screen === 'settings') render(); }, function () { MP.email = null; if (ui.screen === 'settings') render(); });
+    var none = { email: null, pending: null };
+    rpc('mp_email_status').then(function (st) { MP.email = st || none; if (ui.screen === 'settings') render(); }, function () { MP.email = none; if (ui.screen === 'settings') render(); });
+  }
+  function emailAdd(em) {   // sends a confirmation link; the address is Verified (and usable for password recovery) only after the link is opened
+    return MP.sb.auth.updateUser({ email: em }, { emailRedirectTo: SITE }).then(function (r) { if (r.error) throw r.error; });
+  }
+  function emailErr(e) {
+    var m = String((e && e.message) || e || ''), c = (e && (e.code || e.error_code)) || '';
+    if (/already|exists|registered/i.test(m) || c === 'email_exists') return 'That email is already used by another account.';
+    if (/rate|limit|seconds/i.test(m) || /rate_limit/.test(c)) return 'Too many emails were sent. Wait a minute and try again.';
+    if (/invalid/i.test(m)) return 'That email address is not valid.';
+    return mpErr(e);
   }
   function mpSavePendingEmail() {
     var em = MP.pendingEmail; MP.pendingEmail = ''; if (!em) return Promise.resolve();
-    return rpc('mp_email_set', { e: em }).then(function () { MP.email = em.toLowerCase(); MP.msg = 'Account created. Email saved: ' + em; }, function (e) { MP.err = 'Account created, but the email was not saved: ' + mpErr(e) + '. You can add it in Settings.'; });
+    return emailAdd(em).then(function () { MP.msg = 'Account created. We sent a confirmation link to ' + em + '. Open it so the email becomes Verified.'; }, function (e) { MP.err = 'Account created, but the confirmation link was not sent: ' + emailErr(e) + ' You can add the email in Settings.'; });
   }
   MP.fv = { user: '', code: '', email: '' };   // what was typed in the sign-in forms, kept when the form is redrawn after an error
   function mpGuest() { return !!(MP.user && MP.user.is_anonymous); }
@@ -1855,7 +1867,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     }
     h += '<label class="label" for="mp-user">Username</label><input id="mp-user" type="text" maxlength="16" autocomplete="username" placeholder="3 to 16 letters or numbers" value="' + esc(MP.fv.user) + '">' + (t === 'up' ? mpSuggHTML() : '') +
       '<label class="label" for="mp-pass">Password</label><input id="mp-pass" type="password" autocomplete="' + (t === 'up' ? 'new-password' : 'current-password') + '" placeholder="At least 6 characters">' +
-      (t === 'up' ? '<label class="label" for="mp-email">Email (optional)</label><input id="mp-email" type="email" autocomplete="email" placeholder="you@example.com" value="' + esc(MP.fv.email || '') + '"><p class="mute">You will need it if you forget your password: we send a link to this address so you can get your password back. Without an email a lost password cannot be recovered.</p>' : '<p class="mute"><button class="btn ghost" data-go="forgot">Forgot password?</button></p>') +
+      (t === 'up' ? '<label class="label" for="mp-email">Email (optional)</label><input id="mp-email" type="email" autocomplete="email" placeholder="you@example.com" value="' + esc(MP.fv.email || '') + '"><p class="mute">You will need it if you forget your password. We send a confirmation link to this address; once it is Verified, a lost password can be recovered with it. Without a Verified email a lost password cannot be recovered.</p>' : '<p class="mute"><button class="btn ghost" data-go="forgot">Forgot password?</button></p>') +
       '<p style="margin-top:12px"><button class="btn" data-mp="' + (t === 'up' ? 'signup' : 'signin') + '">' + (t === 'up' ? 'Create account' : 'Sign in') + '</button></p></div>';
     return h;
   }
@@ -1946,7 +1958,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
       '<div id="hm-sugg">' + (sg ? '<p class="mute">Free names: ' + sg + '</p>' : '') + '</div>' +
       '<label class="label" for="hm-pass">Password (optional)</label><p><input id="hm-pass" type="password" autocomplete="current-password" placeholder="Empty = play as a guest"></p>' +
       '<label class="label" for="hm-email">Email (optional)</label><p><input id="hm-email" type="email" autocomplete="email" autocapitalize="off" placeholder="you@example.com" value="' + esc(ui.home.email || '') + '"></p>' +
-      '<p class="mute" style="font-size:.85rem;margin-top:-6px">You will need it if you forget your password: we send a link to this email so you can get your password back. Without an email a lost password cannot be recovered. You can leave it empty and add it later in Settings.</p>' +
+      '<p class="mute" style="font-size:.85rem;margin-top:-6px">You will need it if you forget your password. We send a confirmation link to this email; once it is Verified, a lost password can be recovered with it. Without a Verified email it cannot. You can leave it empty and add it later in Settings.</p>' +
       '<label class="label" for="hm-code">Room code (optional)</label><p><input id="hm-code" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="6 letters or numbers" style="text-transform:uppercase" value="' + esc(ui.home.code) + '"></p>' +
       '<div id="hm-ok" class="good">' + esc(ui.homeOk || '') + '</div><div id="hm-err" class="bad">' + esc(ui.homeErr) + '</div>' +
       '<p class="mute" style="margin-top:8px">Quick race: ' + esc(TIERS[QP.tier].name) + ', track ' + QP.lvl + ' of 10 (progress is saved in this browser)</p>' +
@@ -1985,12 +1997,12 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
   }
   function forgotView() {
     return '<div class="card start" id="forgot"><div class="head"><h2>Forgot password</h2><button class="btn ghost" data-go="home">Back</button></div>' +
-      '<p class="mute">Type your username and the email you saved in your account. We send a link that lets you choose a new password.</p>' +
+      '<p class="mute">Type your username and the Verified email of your account. We send a link that lets you choose a new password.</p>' +
       '<label class="label" for="fg-user">Username</label><p><input id="fg-user" type="text" maxlength="16" autocomplete="username" autocapitalize="off" value="' + esc(ui.fg.user || ui.home.user || '') + '"></p>' +
       '<label class="label" for="fg-email">Email</label><p><input id="fg-email" type="email" autocomplete="email" autocapitalize="off" placeholder="you@example.com" value="' + esc(ui.fg.email || '') + '"></p>' +
       '<div id="fg-msg" class="' + (ui.fgOk ? 'good' : 'bad') + '">' + esc(ui.fgMsg || '') + '</div>' +
       '<p style="margin-top:12px"><button class="btn" id="fg-go" data-go="forgotSend">Send link</button></p>' +
-      '<p class="mute" style="font-size:.85rem">No email saved in your account? Then the password cannot be recovered. You can play as a guest, or make a new account with another username.</p></div>';
+      '<p class="mute" style="font-size:.85rem">No Verified email in your account? Then the password cannot be recovered. You can play as a guest, or make a new account with another username.</p></div>';
   }
   function forgotSend() {
     var gv = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
@@ -2007,6 +2019,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
       rpc('mp_email_hint', { u: un }).then(function (h) {
         if (!h || h.state === 'noaccount') return say('There is no account with that username.');
         if (h.state === 'none') return say('This account has no email saved, so its password cannot be recovered. You can play as a guest, or make a new account with another username and save an email there.');
+        if (h.state === 'unverified') return say('The email of this account is not Verified yet, so the password cannot be recovered with it. Sign in with your password, open Settings and use the link we sent to confirm the email (Send link again if needed).');
         if (maskEmail(em) !== h.hint) return say('The email saved in this account looks like ' + h.hint + '. That does not match what you typed. Try another address.');
         return MP.sb.auth.resetPasswordForEmail(em, { redirectTo: SITE }).then(function (r) {
           if (r.error) { var m = r.error.message || ''; return say(/invalid/i.test(m) ? 'That email address is not valid.' : /rate|limit|seconds/i.test(m) ? 'Too many emails were sent. Wait a few minutes and try again.' : m); }
@@ -2041,16 +2054,30 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     var inp = document.getElementById('st-email'), em = inp ? inp.value.trim() : '';
     var say = function (t, ok) { ui.stMsg = t; ui.stOk = !!ok; var e = document.getElementById('st-msg'); if (e) { e.className = ok ? 'good' : 'bad'; e.textContent = t; } };
     if (!EMAIL_RE.test(em)) return say('That email address does not look right.');
-    say('Saving...', true);
-    rpc('mp_email_set', { e: em }).then(function () { MP.email = em.toLowerCase(); ui.stMsg = 'Email saved. If you forget your password, use Forgot password on the home screen.'; ui.stOk = true; if (ui.screen === 'settings') render(); }, function (e) { say(mpErr(e)); });
+    if (MP.email && MP.email.email && MP.email.email.toLowerCase() === em.toLowerCase()) return say('That is already your Verified email.', true);
+    say('Sending...', true);
+    emailAdd(em).then(function () { ui.stMsg = 'We sent a confirmation link to ' + em + '. Open it so the email becomes Verified.'; ui.stOk = true; mpEmailLoad(); }, function (e) { say(emailErr(e)); });
+  }
+  function emailResend() {
+    var p = MP.email && MP.email.pending; if (!p) return;
+    var say = function (t, ok) { ui.stMsg = t; ui.stOk = !!ok; var e = document.getElementById('st-msg'); if (e) { e.className = ok ? 'good' : 'bad'; e.textContent = t; } };
+    say('Sending...', true);
+    MP.sb.auth.resend({ type: 'email_change', email: p, options: { emailRedirectTo: SITE } }).then(function (r) {
+      if (r.error) return emailAdd(p);
+    }).then(function () { say('The confirmation link was sent again to ' + p + '. Check the spam folder too.', true); }, function (e) { say(emailErr(e)); });
   }
   function settingsView() {
     var who = MP.user && MP.name ? '<p>Signed in as <b>' + esc(MP.name) + '</b>' + (mpGuest() ? ' <span class="chip">guest</span>' : '') + ' <button class="btn ghost" data-mp="signout">' + (mpGuest() ? 'Leave' : 'Sign out') + '</button></p>' : '<p class="mute">Not signed in. Sign in on the home screen.</p>';
     var acct = '';
     if (MP.user && !mpGuest()) {
-      acct = '<p class="label">Email for password recovery</p>' + (MP.email === undefined ? '<p class="mute">Loading...</p>' :
-        '<p class="mute">' + (MP.email ? 'Saved email: <b>' + esc(MP.email) + '</b>. Type a new address to change it.' : 'No email saved yet. Add one: if you forget your password we send a link to it so you can get your password back. Without an email a lost password cannot be recovered.') + '</p>' +
-        '<p><input id="st-email" type="email" autocomplete="email" autocapitalize="off" placeholder="you@example.com"> <button class="btn" data-go="emailSave">' + (MP.email ? 'Change email' : 'Save email') + '</button></p>') +
+      var E = MP.email, est = '';
+      if (E) {
+        if (E.email) est += '<p>Email: <b>' + esc(E.email) + '</b> <span class="chip">Verified</span></p>';
+        if (E.pending) est += '<p>' + (E.email ? 'New email: ' : 'Email: ') + '<b>' + esc(E.pending) + '</b> <span class="chip">Not verified</span> <button class="btn ghost" data-go="emailResend">Send link again</button></p><p class="mute">We sent a confirmation link to this address. Open it to make it Verified.' + (E.email ? ' Until then the Verified email above is used.' : ' Until then a lost password cannot be recovered.') + '</p>';
+        if (!E.email && !E.pending) est = '<p class="mute">No email saved yet. A lost password can only be recovered with a Verified email: add yours, we send a confirmation link.</p>';
+      }
+      acct = '<p class="label">Email for password recovery</p>' + (!E ? '<p class="mute">Loading...</p>' : est +
+        '<p><input id="st-email" type="email" autocomplete="email" autocapitalize="off" placeholder="you@example.com"> <button class="btn" data-go="emailSave">' + (E.email || E.pending ? 'Change email' : 'Add email') + '</button></p>') +
         '<div id="st-msg" class="' + (ui.stOk ? 'good' : 'bad') + '">' + esc(ui.stMsg || '') + '</div>';
     } else if (MP.user) acct = '<p class="mute">You are playing as a guest. To save an email for password recovery, create an account (username and password) on the home screen.</p>';
     return '<div class="card start"><div class="head"><h2>Settings</h2><button class="btn ghost" data-go="home">Back</button></div>' + who + acct +
@@ -2150,9 +2177,15 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
           mpSubscribe(rid); mpStartTimers(); render(); return mpRefresh();
         }, function (e) { homeErr(mpErr(e)); });
       };
-      if (em && pw && !mpGuest()) {   // a new account, or signing in to one that has no email yet: save the email
-        return rpc('mp_email_get').then(function (cur) { return cur ? null : rpc('mp_email_set', { e: em }); }).then(function () { ui.home.email = ''; go(); },
-          function (e) { homeErr('You are signed in, but the email was not saved: ' + mpErr(e) + '. Fix it and press Play again, or add it later in Settings.'); });
+      if (em && pw && !mpGuest()) {   // a new account, or signing in to one that has no email yet: send the confirmation link
+        var clr = function () { ui.home.email = ''; var he = document.getElementById('hm-email'); if (he) he.value = ''; };
+        return rpc('mp_email_status').then(function (st) {
+          if (st && (st.email || st.pending)) { clr(); return homeErr('This account already has an email (' + (st.email || st.pending) + '). To change it, use Settings.'); }
+          return emailAdd(em).then(function () {
+            clr(); homeErr('', []); ui.homeOk = 'We sent a confirmation link to ' + em + '. Open it so the email becomes Verified. Press Play when you are ready.';
+            var o = document.getElementById('hm-ok'); if (o) o.textContent = ui.homeOk;
+          }, function (e) { homeErr('You are signed in, but the confirmation link was not sent: ' + emailErr(e) + ' Fix it and press Play again, or add the email later in Settings.'); });
+        }, function (e) { homeErr(mpErr(e)); });
       }
       go();
     });
@@ -2289,7 +2322,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     if (s.phase === 'prep') s.cur = Math.min(progLvl(), 9);
   }
   if (s && s.calendar) { if (DIFF[s.diff]) ui.diff = s.diff; if (CORNERS[s.corners]) ui.corners = s.corners; }
-  var authKind = /[#&]type=recovery/.test(location.hash) ? 'recovery' : /[#&](error_code|error)=/.test(location.hash) ? 'error' : '';   // opened from an email link? (read before the online library clears the address)
+  var authKind = /[#&]type=recovery/.test(location.hash) ? 'recovery' : /[#&]type=email_change/.test(location.hash) ? 'email' : /[#&](error_code|error)=/.test(location.hash) ? 'error' : '';   // opened from an email link? (read before the online library clears the address)
   render();
   var inviteCode = ''; try { var jm = /[?&]join=([A-Za-z0-9]{6})(?![A-Za-z0-9])/.exec(location.search); if (jm) inviteCode = jm[1].toUpperCase(); } catch (e) {}
   if (inviteCode) {   // opened from an invite link: the code is filled in on the home screen
@@ -2300,7 +2333,8 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
   try {
     if (mpOnline() && (inviteCode || authKind || localStorage.getItem(MPK) === '1')) mpConnect(function () {
       if (authKind === 'recovery' && MP.user && MP.name) { ui.screen = 'newpass'; ui.npMsg = ''; render(); }
-      else if (authKind) { ui.screen = 'forgot'; ui.fgOk = false; ui.fgMsg = 'That link has expired or was already used. Request a new one.'; render(); }
+      else if (authKind === 'email' && MP.user && MP.name) { ui.screen = 'home'; ui.homeOk = 'Email confirmed: it is now Verified and can be used to recover your password.'; render(); }
+      else if (authKind) { ui.screen = 'forgot'; ui.fgOk = false; ui.fgMsg = 'That link has expired or was already used. For a password link, request a new one here. For an email confirmation link, sign in, open Settings and use Send link again.'; render(); }
       if (MP.user && MP.name) { mpStartTimers(); qpSync(); var hu = document.getElementById('hm-user'); if (hu && !hu.value) { hu.value = MP.name; ui.home.user = MP.name; } }
     });
   } catch (e) {}

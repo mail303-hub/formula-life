@@ -549,3 +549,36 @@ end $$;
 revoke all on function public.mp_login_email(text, text), public.mp_email_hint(text), public.mp_email_get(), public.mp_email_set(text) from public, anon, authenticated;
 grant execute on function public.mp_login_email(text, text), public.mp_email_hint(text) to anon, authenticated;
 grant execute on function public.mp_email_get(), public.mp_email_set(text) to authenticated;
+
+-- Part 6: the email must be confirmed (Verified) before it can be used to recover a password.
+-- The email is now changed with Supabase Auth itself (auth.updateUser({email})): the account keeps its old login email
+-- until the link in the confirmation mail is opened, so auth.users.email is always a confirmed address.
+-- Needs: Authentication > Sign In / Providers > Email > "Secure email change" OFF, and a working custom SMTP server.
+drop function if exists public.mp_email_set(text);
+drop function if exists public.mp_email_get();
+
+create or replace function public.mp_email_status() returns json
+language sql stable security definer set search_path = public as $$
+  select json_build_object(
+    'email', case when a.email like '%@players.formula-life.game' then null else a.email end,
+    'pending', nullif(a.email_change, ''))
+  from auth.users a where a.id = auth.uid();
+$$;
+
+create or replace function public.mp_email_hint(u text) returns json
+language plpgsql stable security definer set search_path = public as $$
+declare em text; pend text; dom text;
+begin
+  select a.email, nullif(a.email_change, '') into em, pend from public.mp_profiles pr join auth.users a on a.id = pr.id
+    where lower(pr.username) = lower(trim(coalesce(u, ''))) and a.is_anonymous is not true;
+  if em is null then return json_build_object('state', 'noaccount'); end if;
+  if em like '%@players.formula-life.game' then
+    return json_build_object('state', case when pend is not null then 'unverified' else 'none' end);
+  end if;
+  dom := split_part(em, '@', 2);
+  return json_build_object('state', 'set', 'hint', left(em, 1) || '***@' || left(dom, 1) || '***' || coalesce(substring(dom from '\.[^.]+$'), ''));
+end $$;
+
+revoke all on function public.mp_email_status(), public.mp_email_hint(text) from public, anon, authenticated;
+grant execute on function public.mp_email_status() to authenticated;
+grant execute on function public.mp_email_hint(text) to anon, authenticated;
