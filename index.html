@@ -293,15 +293,15 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
   /* quick race progress (guests, accounts and room players alike): kept in this browser, same levels as the career */
   var QPK = 'formula-life-qp', QP = { tier: 0, lvl: 1, unlocked: 0, prog: {}, points: 0, money: 0 };
   Object.defineProperty(QP, 'syncing', { value: false, writable: true, enumerable: false });
-  QP.sc = {};   // leaderboard scores per combination 'opponents,corners,class' -> { m: bit mask of cleared tracks, p: points }
-  (function () { try { var o = JSON.parse(localStorage.getItem(QPK) || 'null'); if (o && typeof o === 'object') { QP.tier = clamp(o.tier | 0, 0, TIERS.length - 1); QP.unlocked = clamp(o.unlocked | 0, 0, TIERS.length - 1); QP.prog = o.prog && typeof o.prog === 'object' ? o.prog : {}; QP.lvl = clamp(o.lvl | 0 || 1, 1, 10); QP.points = Math.max(0, +o.points || 0); QP.money = Math.max(0, +o.money || 0); if (o.sc && typeof o.sc === 'object') QP.sc = o.sc; } } catch (e) {} })();
+  QP.bt = {};   // best race time in seconds per 'opponents,corners,class,track' (track 0-9), for the leaderboards
+  (function () { try { var o = JSON.parse(localStorage.getItem(QPK) || 'null'); if (o && typeof o === 'object') { QP.tier = clamp(o.tier | 0, 0, TIERS.length - 1); QP.unlocked = clamp(o.unlocked | 0, 0, TIERS.length - 1); QP.prog = o.prog && typeof o.prog === 'object' ? o.prog : {}; QP.lvl = clamp(o.lvl | 0 || 1, 1, 10); QP.points = Math.max(0, +o.points || 0); QP.money = Math.max(0, +o.money || 0); if (o.bt && typeof o.bt === 'object') QP.bt = o.bt; } } catch (e) {} })();
   var qpTimer = 0;
   function qpSave() { try { localStorage.setItem(QPK, JSON.stringify(QP)); } catch (e) {} if (qpTimer) clearTimeout(qpTimer); qpTimer = setTimeout(function () { qpTimer = 0; qpSync(); }, 500); }
   var DIFF_IDX = ['easy', 'medium', 'hard'], CORN_IDX = ['gentle', 'medium', 'sharp'];
-  function scKey(d, c, t) { return d + ',' + c + ',' + t; }
-  function scAdd(diff, corners, tier, lvl, pts, podium) {
-    var k = scKey(Math.max(0, DIFF_IDX.indexOf(diff)), Math.max(0, CORN_IDX.indexOf(corners)), tier), e = QP.sc[k] || (QP.sc[k] = { m: 0, p: 0 });
-    e.p += pts; if (podium) e.m |= (1 << (lvl - 1));
+  function btAdd(diff, corners, tier, lvl, time) {
+    if (!(time > 20 && time < 3600)) return;
+    var k = Math.max(0, DIFF_IDX.indexOf(diff)) + ',' + Math.max(0, CORN_IDX.indexOf(corners)) + ',' + tier + ',' + (lvl - 1);
+    if (!(QP.bt[k] <= time)) QP.bt[k] = Math.round(time * 100) / 100;
   }
   function qpCleared(o) { var n = 0; for (var i = 0; i < 6; i++) n += clamp(+(o && o.prog && o.prog[i]) || 0, 0, 10); return n; }
   // registered accounts keep the same progress on the server: merge (highest wins), adopt the result, and show it on the leaderboard
@@ -309,14 +309,14 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     if (!MP.sb || !MP.user || !MP.name || mpGuest() || QP.syncing) return Promise.resolve();
     QP.syncing = true;
     var before = qpCleared(QP);
-    return rpc('mp_progress_save', { p: { tier: QP.tier, lvl: QP.lvl, unlocked: QP.unlocked, prog: QP.prog, points: QP.points, money: Math.round(QP.money), sc: QP.sc } }).then(function (d) {
+    return rpc('mp_progress_save', { p: { tier: QP.tier, lvl: QP.lvl, unlocked: QP.unlocked, prog: QP.prog, points: QP.points, money: Math.round(QP.money), bt: QP.bt } }).then(function (d) {
       QP.syncing = false;
       if (!d) return;
       var adopt = qpCleared(d) > before;
       QP.unlocked = clamp(d.unlocked | 0, 0, TIERS.length - 1);
       QP.prog = d.prog && typeof d.prog === 'object' ? d.prog : {};
       QP.points = Math.max(QP.points, +d.points || 0); QP.money = Math.max(QP.money, +d.money || 0);
-      if (d.sc && typeof d.sc === 'object') Object.keys(d.sc).forEach(function (k) { var a = QP.sc[k] || (QP.sc[k] = { m: 0, p: 0 }), b = d.sc[k] || {}; a.m |= (b.m | 0); a.p = Math.max(a.p, b.p | 0); });
+      if (d.bt && typeof d.bt === 'object') Object.keys(d.bt).forEach(function (k) { var v = +d.bt[k]; if (v > 0 && !(QP.bt[k] <= v)) QP.bt[k] = v; });
       if (adopt) { QP.tier = clamp(d.tier | 0, 0, TIERS.length - 1); QP.lvl = clamp(d.lvl | 0 || 1, 1, 10); }
       QP.tier = Math.min(QP.tier, QP.unlocked); QP.lvl = Math.min(QP.lvl, qpProg(QP.tier) + 1);
       try { localStorage.setItem(QPK, JSON.stringify(QP)); } catch (e) {}
@@ -1613,8 +1613,8 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     else if (g === 'newpassSave') { newpassSave(); return; }
     else if (g === 'emailSave') { emailSave(); return; }
     else if (g === 'emailResend') { emailResend(); return; }
-    else if (g === 'board') { ui.screen = 'board'; ui.board = { rows: null, err: '', t: QP.tier, d: Math.max(0, DIFF_IDX.indexOf(ui.diff)), c: Math.max(0, CORN_IDX.indexOf(ui.corners)) }; boardLoad(); return; }
-    else if (g === 'bflt') { var bk = b.getAttribute('data-k'), bi = +b.getAttribute('data-i'); if (ui.board && /^[tdc]$/.test(bk)) { ui.board[bk] = bi; boardLoad(); } return; }
+    else if (g === 'board') { ui.screen = 'board'; ui.board = { rows: null, err: '', t: QP.tier, d: Math.max(0, DIFF_IDX.indexOf(ui.diff)), c: Math.max(0, CORN_IDX.indexOf(ui.corners)), k: clamp(QP.lvl, 1, 10) - 1 }; boardLoad(); return; }
+    else if (g === 'bflt') { var bk = b.getAttribute('data-k'), bi = +b.getAttribute('data-i'); if (ui.board && /^[tdck]$/.test(bk)) { ui.board[bk] = bi; boardLoad(); } return; }
     else if (g === 'home') { ui.screen = 'home'; }
     else if (g === 'career') { ui.screen = 'career'; }
     else if (g === 'homePlay') { homePlay(); return; }
@@ -1650,7 +1650,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
         var qrows = (Game.order || []).map(function (id) { var d = s.drivers.filter(function (x) { return x.id === id; })[0]; return { name: d ? d.name : '?', me: id === 'me' }; });
         var qt = QP.tier, ql = QP.lvl, cleared = false, unlockedName = '', podium = Game.pos <= needPos(ql);
         var qpts = POINTS[Game.pos - 1] || 0, qprize = (PRIZE[Game.pos - 1] || 0) * TIERS[qt].mult;
-        QP.points += qpts; QP.money += qprize; scAdd(s.diff, s.corners, qt, ql, qpts, podium); qpSave();
+        QP.points += qpts; QP.money += qprize; btAdd(s.diff, s.corners, qt, ql, Game.finishT); qpSave();
         if (podium && ql === qpProg(qt) + 1) {
           cleared = true; QP.prog[qt] = ql;
           if (ql < 10) QP.lvl = ql + 1;
@@ -1971,29 +1971,30 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     mpConnect(function (err) {
       if (err) { b.err = err; if (ui.screen === 'board') render(); return; }
       var run = function () {
-        rpc('mp_board', { d: b.d, c: b.c, t: b.t }).then(function (d) { if (ui.board === b) { b.rows = d || []; if (ui.screen === 'board') render(); } }, function (e) { b.err = mpErr(e); if (ui.screen === 'board') render(); });
+        rpc('mp_board', { d: b.d, c: b.c, t: b.t, k: b.k }).then(function (d) { if (ui.board === b) { b.rows = (d || []).slice(0, 10); if (ui.screen === 'board') render(); } }, function (e) { b.err = mpErr(e); if (ui.screen === 'board') render(); });
       };
       if (MP.user && MP.name && !mpGuest() && !QP.syncing) qpSync().then(run, run); else run();
     });
   }
   function boardView() {
     var b = ui.board, me = (MP.name || '').toLowerCase(), body;
-    var bits = function (m) { var n = 0; for (var i = 0; i < 10; i++) if ((m >> i) & 1) n++; return n; };
     if (b.err) body = '<p class="bad">' + esc(b.err) + '</p>';
     else if (!b.rows) body = '<p class="mute">Loading...</p>';
-    else if (!b.rows.length) body = '<p class="mute">No results in this table yet. Sign in with a password and clear a track with these settings to appear here.</p>';
+    else if (!b.rows.length) body = '<p class="mute">No times in this table yet. Sign in with a password and finish this track with these settings to appear here.</p>';
     else body = '<div class="mprows">' + b.rows.map(function (r, i) {
-      return '<div class="mprow' + (String(r.username).toLowerCase() === me ? ' me' : '') + '"><span>' + (i + 1) + '. ' + esc(r.username) + '</span><span class="mute">' + bits(r.mask | 0) + '/10 tracks | ' + (r.points | 0) + ' pts</span></div>';
+      return '<div class="mprow' + (String(r.username).toLowerCase() === me ? ' me' : '') + '"><span>' + (i + 1) + '. ' + esc(r.username) + '</span><span class="mono">' + fmt(+r.best) + '</span></div>';
     }).join('') + '</div>';
     var grp = function (label, key, names) {
       return '<p class="label">' + label + '</p><div class="qgrid">' + names.map(function (nm, i) { return '<button class="btn ' + (b[key] === i ? '' : 'ghost') + '" data-go="bflt" data-k="' + key + '" data-i="' + i + '">' + esc(nm) + '</button>'; }).join('') + '</div>';
     };
+    var trk = TRACKS[b.k % TRACKS.length];
     return '<div class="card start"><div class="head"><h2>Leaderboard</h2><button class="btn ghost" data-go="home">Back</button></div>' +
       grp('Level', 't', TIERS.map(function (q) { return q.name; })) +
       grp('Opponents', 'd', ['Easy', 'Medium', 'Hard']) +
       grp('Corners', 'c', ['Gentle', 'Medium', 'Sharp']) +
-      '<p style="margin:12px 0 6px"><b>' + esc(TIERS[b.t].name) + '</b> | opponents <b>' + ['Easy', 'Medium', 'Hard'][b.d] + '</b> | corners <b>' + ['Gentle', 'Medium', 'Sharp'][b.c] + '</b></p>' +
-      '<p class="mute">Every combination has its own table, so the competition is fair. Players with an account only. Ranked by tracks cleared (top finish needed), then points.</p>' + body + '</div>';
+      grp('Track', 'k', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(String)) +
+      '<p style="margin:12px 0 6px"><b>Top 10 fastest races</b>: ' + esc(TIERS[b.t].name) + ', track ' + (b.k + 1) + ' of 10 (' + esc(trk.name) + '), opponents <b>' + ['Easy', 'Medium', 'Hard'][b.d] + '</b>, corners <b>' + ['Gentle', 'Medium', 'Sharp'][b.c] + '</b></p>' +
+      '<p class="mute">Best race time. Every combination has its own table, so the competition is fair. Players with an account only.</p>' + body + '</div>';
   }
   function forgotView() {
     return '<div class="card start" id="forgot"><div class="head"><h2>Forgot password</h2><button class="btn ghost" data-go="home">Back</button></div>' +
