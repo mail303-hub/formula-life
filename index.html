@@ -325,6 +325,18 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
   }
   function qpProg(i) { return clamp(+QP.prog[i] || 0, 0, 10); }
   QP.tier = Math.min(QP.tier, QP.unlocked); QP.lvl = Math.min(QP.lvl, qpProg(QP.tier) + 1);
+  /* One progress for both modes. Older career saves had their own copy (s.prog, s.unlocked, s.cleared): merge it into QP, highest wins, then drop it. */
+  function migrateCareerProgress() {
+    if (!s) return;
+    var ch = false;
+    (s.cleared || []).forEach(function (i) { if (qpProg(i) < 10) { QP.prog[i] = 10; ch = true; } });
+    var sp = s.prog && typeof s.prog === 'object' ? s.prog : {};
+    for (var i = 0; i < TIERS.length; i++) { var v = clamp(+sp[i] || 0, 0, 10); if (v > qpProg(i)) { QP.prog[i] = v; ch = true; } }
+    var un = clamp(Math.max(+s.unlocked || 0, s.tier | 0), 0, TIERS.length - 1);
+    if (un > QP.unlocked) { QP.unlocked = un; ch = true; }
+    if (ch) { if ((s.tier | 0) > QP.tier && (s.tier | 0) <= QP.unlocked) { QP.tier = s.tier | 0; QP.lvl = Math.min(qpProg(QP.tier) + 1, 10); } qpSave(); }   // quick race starts at the level the career is on
+    if (s.prog !== undefined || s.unlocked !== undefined || s.cleared !== undefined) { delete s.prog; delete s.unlocked; delete s.cleared; save(); }
+  }
   function load() { try { var r = localStorage.getItem(KEY); if (r) { var o = JSON.parse(r); if (o && o.phase) return o; } } catch (e) {} return null; }
   /* ---------- gamepad mapping (saved in the browser) ---------- */
   var PAD_KEY = 'formula-life-pad';
@@ -343,7 +355,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
   }
 
   function tier() { return TIERS[s.tier]; }
-  function unlockedTier() { return Math.max(s.unlocked || 0, s.tier, 0); }   // highest level you may choose (older saves: your current level)
+  function unlockedTier() { return Math.max(QP.unlocked, s.tier, 0); }   // highest level you may choose: ONE progress shared with the quick race (QP)
   function diff() { return DIFF[s && s.diff] || DIFF.medium; }
   function trainCost() { return 30 * tier().mult; }
 
@@ -358,7 +370,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
 
   /* Each level has 10 tracks, difficulty 1..10 (1 = gentlest bends). The track names are shuffled every season. */
   function buildCalendar() { return TRACKS.slice(0, 10).map(function (q, i) { return { name: q.name, wet: q.wet, lvl: i + 1 }; }); }   // track n is always the same circuit
-  function progLvl() { s.prog = s.prog || {}; return clamp(s.prog[s.tier] || 0, 0, 10); }   // highest track difficulty cleared in this level
+  function progLvl() { return qpProg(s.tier); }   // highest track difficulty cleared in this level (shared with the quick race)
   function trackNow() { var n = s.calendar.length; return s.calendar[clamp(s.cur != null ? s.cur : s.race, 0, n - 1)]; }
   function startSeason(develop) {
     var t = tier();
@@ -472,12 +484,13 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     s.energy = clamp(s.energy - 15, 0, 100);
     var lvlNote = null;
     if (!mine.dnf && mine.pos <= needPos(tr.lvl) && tr.lvl === progLvl() + 1) {   // a good finish on the next locked difficulty clears it
-      s.prog[s.tier] = tr.lvl;
+      QP.prog[s.tier] = tr.lvl;   // progress lives in QP only, so the quick race sees it at once (and accounts sync it)
+      if (QP.tier === s.tier && QP.lvl === tr.lvl && tr.lvl < 10) QP.lvl = tr.lvl + 1;
       if (tr.lvl >= 10) {
-        s.cleared = s.cleared || []; if (s.cleared.indexOf(s.tier) < 0) s.cleared.push(s.tier);
-        if (s.tier < TIERS.length - 1) { s.unlocked = Math.max(unlockedTier(), s.tier + 1); lvlNote = { t: 'Level complete! Your finish (' + ord(mine.pos) + ') clears all 10 tracks of ' + tier().name + '. Next level opened: ' + TIERS[s.tier + 1].name + ', starting with Track 1 of 10.', c: 'good' }; }
+        if (s.tier < TIERS.length - 1) { QP.unlocked = Math.max(QP.unlocked, s.tier + 1); if (QP.tier === s.tier) { QP.tier = s.tier + 1; QP.lvl = Math.min(qpProg(QP.tier) + 1, 10); } lvlNote = { t: 'Level complete! Your finish (' + ord(mine.pos) + ') clears all 10 tracks of ' + tier().name + '. Next level opened: ' + TIERS[s.tier + 1].name + ', starting with Track 1 of 10.', c: 'good' }; }
         else lvlNote = { t: 'Track difficulty 10 cleared! You finished Formula 1.', c: 'good' };
       } else lvlNote = { t: 'Track complete! Your finish (' + ord(mine.pos) + ') clears Track ' + tr.lvl + ' of 10. Next track opened: Track ' + (tr.lvl + 1) + ' of 10: ' + s.calendar[tr.lvl].name + '.', c: 'good' };
+      qpSave();
     } else if (!mine.dnf && mine.pos > needPos(tr.lvl) && tr.lvl === progLvl() + 1) lvlNote = { t: 'To clear difficulty ' + tr.lvl + ' and unlock the next one, ' + needTxt(tr.lvl) + '. Try this track again.' };
     else if (mine.dnf && tr.lvl === progLvl() + 1) lvlNote = { t: 'You did not finish. To clear difficulty ' + tr.lvl + ', ' + needTxt(tr.lvl) + '.' };
     if (driven && driven.order) notes.push({ t: 'You drove this race yourself.' });
@@ -1507,7 +1520,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     var un = unlockedTier();
     var h = '<div class="card"><div class="head"><h2>Choose level</h2><span class="label">Clear all 10 tracks to unlock the next level</span></div><div class="opts" style="grid-template-columns:1fr">';
     TIERS.forEach(function (q, i) {
-      var locked = i > un, cur = i === s.tier, pr = clamp((s.prog || {})[i] || 0, 0, 10), done = pr >= 10;
+      var locked = i > un, cur = i === s.tier, pr = qpProg(i), done = pr >= 10;
       var st = locked ? 'Locked. Clear all 10 tracks of ' + TIERS[i - 1].name + ' first.' : done ? 'Cleared' + (cur ? ', current level' : '') : (cur ? 'Current level' : 'Unlocked') + ', ' + pr + '/10 tracks cleared';
       var warn = ui.confirmTier === i && !locked && !cur;
       h += '<div class="opt"><button class="offer" data-go="pick" data-i="' + i + '"' + (locked ? ' disabled' : '') + '><span class="t">' + (locked ? '&#128274; ' : done ? '&#10003; ' : '') + esc(q.name) + '</span><span class="d">' + (warn ? 'Tap again to leave this season and start ' + esc(q.name) : st) + '</span></button></div>';
@@ -1613,8 +1626,8 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     else if (g === 'newpassSave') { newpassSave(); return; }
     else if (g === 'emailSave') { emailSave(); return; }
     else if (g === 'emailResend') { emailResend(); return; }
-    else if (g === 'board') { ui.screen = 'board'; ui.board = { rows: null, err: '', t: QP.tier, d: Math.max(0, DIFF_IDX.indexOf(ui.diff)), c: Math.max(0, CORN_IDX.indexOf(ui.corners)), k: clamp(QP.lvl, 1, 10) - 1 }; boardLoad(); return; }
-    else if (g === 'bflt') { var bk = b.getAttribute('data-k'), bi = +b.getAttribute('data-i'); if (ui.board && /^[tdck]$/.test(bk)) { ui.board[bk] = bi; boardLoad(); } return; }
+    else if (g === 'board') { ui.screen = 'board'; ui.board = { rows: null, err: '', t: QP.tier, c: Math.max(0, CORN_IDX.indexOf(ui.corners)), k: clamp(QP.lvl, 1, 10) - 1 }; boardLoad(); return; }
+    else if (g === 'bflt') { var bk = b.getAttribute('data-k'), bi = +b.getAttribute('data-i'); if (ui.board && /^[tck]$/.test(bk)) { ui.board[bk] = bi; boardLoad(); } return; }
     else if (g === 'home') { ui.screen = 'home'; }
     else if (g === 'career') { ui.screen = 'career'; }
     else if (g === 'homePlay') { homePlay(); return; }
@@ -1971,7 +1984,12 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     mpConnect(function (err) {
       if (err) { b.err = err; if (ui.screen === 'board') render(); return; }
       var run = function () {
-        rpc('mp_board', { d: b.d, c: b.c, t: b.t, k: b.k }).then(function (d) { if (ui.board === b) { b.rows = (d || []).slice(0, 10); if (ui.screen === 'board') render(); } }, function (e) { b.err = mpErr(e); if (ui.screen === 'board') render(); });
+        // no split by opponent difficulty: one table per level, corners and track; each player's best time over Easy, Medium and Hard
+        Promise.all([0, 1, 2].map(function (d) { return rpc('mp_board', { d: d, c: b.c, t: b.t, k: b.k }); })).then(function (all) {
+          var best = {};
+          all.forEach(function (rows) { (rows || []).forEach(function (r) { var u = String(r.username).toLowerCase(); if (!best[u] || +r.best < +best[u].best) best[u] = r; }); });
+          if (ui.board === b) { b.rows = Object.keys(best).map(function (u) { return best[u]; }).sort(function (x, y) { return +x.best - +y.best; }).slice(0, 10); if (ui.screen === 'board') render(); }
+        }, function (e) { b.err = mpErr(e); if (ui.screen === 'board') render(); });
       };
       if (MP.user && MP.name && !mpGuest() && !QP.syncing) qpSync().then(run, run); else run();
     });
@@ -1990,11 +2008,10 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
     var trk = TRACKS[b.k % TRACKS.length];
     return '<div class="card start"><div class="head"><h2>Leaderboard</h2><button class="btn ghost" data-go="home">Back</button></div>' +
       grp('Level', 't', TIERS.map(function (q) { return q.name; })) +
-      grp('Opponents', 'd', ['Easy', 'Medium', 'Hard']) +
       grp('Corners', 'c', ['Gentle', 'Medium', 'Sharp']) +
       grp('Track', 'k', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(String)) +
-      '<p style="margin:12px 0 6px"><b>Top 10 fastest races</b>: ' + esc(TIERS[b.t].name) + ', track ' + (b.k + 1) + ' of 10 (' + esc(trk.name) + '), opponents <b>' + ['Easy', 'Medium', 'Hard'][b.d] + '</b>, corners <b>' + ['Gentle', 'Medium', 'Sharp'][b.c] + '</b></p>' +
-      '<p class="mute">Best race time. Every combination has its own table, so the competition is fair. Players with an account only.</p>' + body + '</div>';
+      '<p style="margin:12px 0 6px"><b>Top 10 fastest races</b>: ' + esc(TIERS[b.t].name) + ', track ' + (b.k + 1) + ' of 10 (' + esc(trk.name) + '), corners <b>' + ['Gentle', 'Medium', 'Sharp'][b.c] + '</b></p>' +
+      '<p class="mute">Best race time (any opponent difficulty). Each level, corners setting and track has its own table. Players with an account only.</p>' + body + '</div>';
   }
   function forgotView() {
     return '<div class="card start" id="forgot"><div class="head"><h2>Forgot password</h2><button class="btn ghost" data-go="home">Back</button></div>' +
@@ -2316,8 +2333,7 @@ button, .btn, [data-go], [data-mp], .stage, .stage *, .slider, .slider * { -webk
 
   s = load();
   if (s && s.calendar) {   // older saves: make sure the calendar has the 10 tracks in difficulty order and carry the cleared levels over
-    s.prog = s.prog || {};
-    (s.cleared || []).forEach(function (i) { s.prog[i] = 10; });
+    migrateCareerProgress();   // old saves kept their own progress; fold it into the shared one (QP)
     var okCal = s.calendar.length === 10 && s.calendar.every(function (q, i) { return q.lvl === i + 1 && q.name === TRACKS[i].name; });
     if (!okCal) { s.calendar = buildCalendar(); s.race = Math.min(s.race || 0, 9); }
     if (s.phase === 'prep') s.cur = Math.min(progLvl(), 9);
